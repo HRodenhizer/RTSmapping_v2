@@ -325,7 +325,7 @@ custom_pal4 <- c(
   "2-3" = "#7A82A6", # low x, mid y
   "3-3" = "#6F5878", # mid x, mid y
   "4-3" = "#642E4A", # high x, mid y
-  "1-4" = "#435786", # 0 x, high y
+  "1-4" = "#4885C1", # 0 x, high y
   "2-4" = "#456699", # low x, high y
   "3-4" = "#424771", # mid x, high y
   "4-4" = "#3F2949" # high x, high y
@@ -340,8 +340,8 @@ total_counts = train_points |>
   summarise(n = n(), .by = c(TrainClass)) |>
   mutate(
     n = paste("Total:", n),
-    x = c(-0.9, 2),
-    y = c(2, -0.65),
+    x = c(-1.35, 2),
+    y = c(2, -0.9),
     angle = c(90, 0)
   )
 
@@ -439,10 +439,10 @@ train_hexplot = ggplot(world_north) +
   )
 
 inset_location = c(
-  left = 0.62 + 0.21,
+  left = 0.62 + 0.18,
   bottom = 0.105 - 0.105,
   right = 0.79 + 0.21,
-  top = 0.275 - 0.11
+  top = 0.275 - 0.13
 )
 
 train_hexplot_title = train_hexplot +
