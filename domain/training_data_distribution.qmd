@@ -25,6 +25,17 @@ theme_set(theme_bw())
 
 # Define Functions
 
+```{r}
+classify_counts = function(count_data, breaks) {
+  new_count_data = case_when(
+    count_data == breaks[1] ~ "1",
+    count_data <= breaks[3] ~ "2",
+    count_data <= breaks[4] ~ "3",
+    count_data > breaks[4] ~ "4"
+  )
+}
+```
+
 # Import Data
 
 ## Domain
@@ -61,16 +72,15 @@ splits = gcs_get_object(
 )
 
 # why is this returning null elements?
-splits_df = map2(
-  splits[["splits"]],
-  names(splits[["splits"]]),
+splits_df = map2_df(
+  splits[["splits"]][1:3],
+  names(splits[["splits"]][1:3]),
   ~ .x |>
-    pluck(.y) # |>
-  # pluck("ecoregions")# |>
-  # unlist() |>
-  # as_tibble() #|>
-  # rename(ecoregion = 1) |>
-  # mutate(group = .y)
+    pluck("ecoregions") |>
+    unlist() |>
+    as_tibble() |>
+    rename(ecoregion = 1) |>
+    mutate(group = .y)
 )
 ```
 
@@ -235,6 +245,8 @@ neg_points = train_points |>
 ## Create hex grid
 
 ```{r}
+class_breaks = c(0, 1, 100, 200)
+
 train_hex = train_points |>
   st_make_grid(
     cellsize = sqrt((100000 * 2) / (3 * sqrt(3))) * sqrt(3) * 1000, # get short side length of hexagon from area == 10000 km^2, and convert to m
@@ -249,39 +261,72 @@ train_hex = train_points |>
     NoRTSCount = sum(NoRTS),
     .by = c(geometry)
   ) |>
-  bi_class(
-    x = RTSCount,
-    y = NoRTSCount,
-    style = "equal",
-    dim = 3
-  ) |>
+  # bi_class(
+  #   x = RTSCount,
+  #   y = NoRTSCount,
+  #   style = "equal",
+  #   dim = 3
+  # ) |>
   rowwise() |>
   mutate(
+    # bi_class = str_flatten(
+    #   map_df(
+    #     as_tibble(str_split(bi_class, "-", simplify = TRUE)),
+    #     ~ as.numeric(.x) + 1
+    #   ),
+    #   collapse = "-"
+    # )
     bi_class = str_flatten(
-      map_df(
-        as_tibble(str_split(bi_class, "-", simplify = TRUE)),
-        ~ as.numeric(.x) + 1
+      c(
+        classify_counts(RTSCount, breaks = class_breaks),
+        classify_counts(NoRTSCount, breaks = class_breaks)
       ),
       collapse = "-"
     )
   ) |>
   ungroup() |>
   mutate(
-    bi_class = case_when(
-      bi_class == "2-2" & RTSCount == 0 & NoRTSCount == 0 ~
-        "1-1",
-      bi_class == "2-2" & RTSCount == 0 & NoRTSCount != 0 ~
-        "1-2",
-      bi_class == "2-2" & RTSCount != 0 & NoRTSCount == 0 ~
-        "2-1",
-      TRUE ~ bi_class
-    ),
+    # bi_class = case_when(
+    #   bi_class == "2-2" & RTSCount == 0 & NoRTSCount == 0 ~
+    #     "1-1",
+    #   bi_class == "2-2" & RTSCount == 0 & NoRTSCount != 0 ~
+    #     "1-2",
+    #   bi_class == "2-2" & RTSCount != 0 & NoRTSCount == 0 ~
+    #     "2-1",
+    #   TRUE ~ bi_class
+    # ),
     Buffer = (sqrt((100000 * 2) / (3 * sqrt(3))) * sqrt(3) * 1000) /
       2 *
       (0.9 - sqrt(Count / max(Count)) * 0.9), # use this ratio to scale the hexagons by total count: hexagon short side length * percentile of total count
     geometry_scaled = st_buffer(geometry, dist = Buffer * -1) # geometry of scaled hexagons
-  )
-rgb
+  ) |>
+  st_join(
+    subregions |>
+      select(-COLOR),
+    largest = TRUE
+  ) |>
+  rename(ecoregion = ECO_NAME)
+```
+
+```{r}
+regions_hex = train_hex |>
+  left_join(splits_df) |>
+  summarise(
+    geometry = st_union(geometry),
+    .by = c(group)
+  ) |>
+  mutate(
+    geometry_offset = st_buffer(geometry, dist = -5000),
+    group = factor(
+      case_when(
+        str_detect(group, "test") ~ "Test",
+        str_detect(group, "train") ~ "Train",
+        str_detect(group, "val") ~ "Val"
+      ),
+      levels = c("Val", "Test", "Train")
+    )
+  ) |>
+  filter(!is.na(group))
 ```
 
 ## Map
@@ -351,16 +396,9 @@ legend <- bi_legend(
   xlab = "RTS Positive (Count)",
   ylab = "RTS Negative (Count)",
   size = 5,
-  breaks = map(
-    bi_class_breaks(
-      train_hex,
-      x = RTSCount,
-      y = NoRTSCount,
-      style = "equal",
-      dim = 3,
-      split = TRUE
-    ),
-    ~ c("0", .x)
+  breaks = list(
+    "bi_x" = c(class_breaks, max(train_hex |> pull(RTSCount))),
+    "bi_y" = c(class_breaks, max(train_hex |> pull(NoRTSCount)))
   )
 ) +
   geom_text(
@@ -390,16 +428,16 @@ legend <- bi_legend(
 train_hexplot = ggplot(world_north) +
   geom_sf(
     data = long_lines,
-    color = 'gray90',
+    color = 'gray85',
     linewidth = 0.25
   ) +
   geom_sf(
     data = lat_lines,
-    color = 'gray90',
+    color = 'gray85',
     linewidth = 0.25
   ) +
   geom_sf(
-    color = 'gray80',
+    color = 'transparent',
     fill = 'gray90'
   ) +
   geom_sf(
@@ -415,26 +453,44 @@ train_hexplot = ggplot(world_north) +
     color = "transparent",
     alpha = 1
   ) +
-  bi_scale_fill(pal = custom_pal4, dim = 4) +
+  bi_scale_fill(
+    pal = custom_pal4,
+    dim = 4,
+    guide = "none"
+  ) +
+  geom_sf(
+    data = regions_hex,
+    aes(
+      geometry = geometry_offset,
+      linetype = group
+    ),
+    color = "black",
+    fill = "transparent"
+  ) +
+  scale_linetype_manual(
+    name = "Training\nGroup",
+    # guide = guide_legend(reverse = TRUE),
+    values = c("dotted", "longdash", "solid")
+  ) +
   geom_sf(
     data = crop_poly,
     color = 'black',
     fill = 'transparent',
     linewidth = 0.25
   ) +
-  # annotation_custom(
-  #   ggplotGrob(legend),
-  #   xmin = -Inf,
-  #   xmax = 0.26,
-  #   ymin = 0.55,
-  #   ymax = Inf
-  #   ) +
   scale_x_continuous(expand = expansion(mult = c(0.01, 0.01))) +
   scale_y_continuous(expand = expansion(mult = c(0.01, 0.01))) +
   coord_sf() +
   theme_void() +
   theme(
-    legend.position = "none",
+    legend.title = element_blank(),
+    # legend.title = element_text(size = 5.5),
+    legend.text = element_text(size = 5),
+    legend.text.position = "left",
+    legend.position = "inside",
+    legend.position.inside = c(0.995, 0.18),
+    legend.justification = c(1, 0),
+    legend.key.size = unit(13, "points"),
     # plot.margin = margin(10, 10, 10, 10) # trying to fix the outer circle getting cut off at top, bottom, left, and right
   )
 
@@ -444,16 +500,6 @@ inset_location = c(
   right = 0.79 + 0.21,
   top = 0.275 - 0.13
 )
-
-train_hexplot_title = train_hexplot +
-  ggtitle("RTS Model v2 Training Data") +
-  inset_element(
-    legend,
-    left = inset_location["left"],
-    bottom = inset_location["bottom"],
-    right = inset_location["right"],
-    top = inset_location["top"]
-  )
 
 train_hexplot = train_hexplot +
   inset_element(
@@ -467,16 +513,8 @@ train_hexplot
 ```
 
 ```{r}
-#| include: false
-# ggsave(
-#   "./plots/training_data_map_w_title.png",
-#   train_hexplot_title,
-#   height = 6.75,
-#   width = 6.5
-# )
-
 ggsave(
-  "./plots/training_data_map_4.png",
+  "./plots/training_data_map.png",
   train_hexplot,
   height = 6.5,
   width = 6.5
