@@ -319,11 +319,11 @@ regions_hex = train_hex |>
     geometry_offset = st_buffer(geometry, dist = -5000),
     group = factor(
       case_when(
-        str_detect(group, "test") ~ "Test",
-        str_detect(group, "train") ~ "Train",
-        str_detect(group, "val") ~ "Val"
+        str_detect(group, "test") ~ "Testing",
+        str_detect(group, "train") ~ "Training",
+        str_detect(group, "val") ~ "Validation"
       ),
-      levels = c("Val", "Test", "Train")
+      levels = c("Training", "Validation", "Testing")
     )
   ) |>
   filter(!is.na(group))
@@ -485,12 +485,13 @@ train_hexplot = ggplot(world_north) +
   theme(
     legend.title = element_blank(),
     # legend.title = element_text(size = 5.5),
-    legend.text = element_text(size = 5),
+    legend.text = element_text(size = 5, margin = margin(0, 3, 0, 0)),
     legend.text.position = "left",
     legend.position = "inside",
-    legend.position.inside = c(0.995, 0.18),
+    legend.position.inside = c(0.995, 0.16),
     legend.justification = c(1, 0),
     legend.key.size = unit(13, "points"),
+    legend.key.spacing.x = unit(0, "points")
     # plot.margin = margin(10, 10, 10, 10) # trying to fix the outer circle getting cut off at top, bottom, left, and right
   )
 
