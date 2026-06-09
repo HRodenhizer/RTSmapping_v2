@@ -16,6 +16,7 @@ library(ggnewscale)
 library(biscale)
 library(viridis)
 library(patchwork)
+library(ggrepel)
 ```
 
 ```{r}
@@ -242,7 +243,8 @@ neg_points = train_points |>
 # st_write(train_points, "./domain/train_points.geojson")
 ```
 
-## Create hex grid
+## Create Hex Grid
+### Count Scaled Hex
 
 ```{r}
 class_breaks = c(0, 1, 100, 200)
@@ -308,6 +310,8 @@ train_hex = train_points |>
   rename(ecoregion = ECO_NAME)
 ```
 
+### Region Hex
+
 ```{r}
 regions_hex = train_hex |>
   left_join(splits_df) |>
@@ -327,6 +331,34 @@ regions_hex = train_hex |>
     )
   ) |>
   filter(!is.na(group))
+```
+
+## Examples for Map Labels
+
+```{r}
+examples = train_hex |>
+  filter(
+    RTSCount == max(RTSCount) |
+      NoRTSCount == max(NoRTSCount) |
+      abs(RTSCount - NoRTSCount) / Count ==
+        min(abs(RTSCount - NoRTSCount) / Count)
+  ) |>
+  mutate(
+    geometry_centroid = st_centroid(geometry),
+    nudge_x = c(10, 10, 10),
+    nudge_y = c(10, 10, 10)
+  ) |>
+  st_set_geometry("geometry_centroid") |>
+  select(Count, RTSCount, NoRTSCount, nudge_x, nudge_y)
+examples = examples %>%
+  bind_cols(
+    st_coordinates(.$geometry_centroid)
+  ) |>
+  rename(x_start = X, y_start = Y) |>
+  mutate(
+    x_end = x_start + c(800000, 580000, 0),
+    y_end = y_start + c(450000, -350000, -1300000)
+  )
 ```
 
 ## Map
@@ -470,7 +502,24 @@ train_hexplot = ggplot(world_north) +
   scale_linetype_manual(
     name = "Training\nGroup",
     # guide = guide_legend(reverse = TRUE),
-    values = c("dotted", "longdash", "solid")
+    values = c("solid", "longdash", "dotted")
+  ) +
+  geom_sf(
+    data = examples
+  ) +
+  # geom_text_repel(
+  #   data = example_hex,
+  #   aes(
+  #     x = X,
+  #     y = Y,
+  #     label = Count,
+  #     nudge_x = nudge_x,
+  #     nudge_y = nudge_y
+  #   )
+  # ) +
+  geom_segment(
+    data = examples,
+    aes(x = x_start, xend = x_end, y = y_start, yend = y_end)
   ) +
   geom_sf(
     data = crop_poly,
