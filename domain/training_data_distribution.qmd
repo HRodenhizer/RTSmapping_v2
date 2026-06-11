@@ -356,8 +356,10 @@ examples = examples %>%
   ) |>
   rename(x_start = X, y_start = Y) |>
   mutate(
-    x_end = x_start + c(800000, 580000, 0),
-    y_end = y_start + c(450000, -350000, -1300000)
+    x_end = x_start + c(800000, 630000, 180000),
+    y_end = y_start + c(450000, -350000, -1100000),
+    label = paste0("Positive: ", RTSCount, "\nNegative: ", NoRTSCount),
+    label_total = paste0("Total: ", Count)
   )
 ```
 
@@ -504,22 +506,32 @@ train_hexplot = ggplot(world_north) +
     # guide = guide_legend(reverse = TRUE),
     values = c("solid", "longdash", "dotted")
   ) +
-  geom_sf(
-    data = examples
-  ) +
-  # geom_text_repel(
-  #   data = example_hex,
-  #   aes(
-  #     x = X,
-  #     y = Y,
-  #     label = Count,
-  #     nudge_x = nudge_x,
-  #     nudge_y = nudge_y
-  #   )
-  # ) +
   geom_segment(
     data = examples,
     aes(x = x_start, xend = x_end, y = y_start, yend = y_end)
+  ) +
+  geom_text(
+    data = examples,
+    aes(
+      x = x_end + c(50000, 50000, -350000),
+      y = y_end + c(0, 0, -150000),
+      label = label
+    ),
+    size = 2,
+    hjust = 0,
+    lineheight = 1
+  ) +
+  geom_text(
+    data = examples,
+    aes(
+      x = x_end + c(50000, 50000, -350000),
+      y = y_end + c(rep(-250000, 2), -250000 - 150000),
+      label = label_total
+    ),
+    size = 2,
+    fontface = "bold",
+    hjust = 0,
+    lineheight = 1
   ) +
   geom_sf(
     data = crop_poly,
