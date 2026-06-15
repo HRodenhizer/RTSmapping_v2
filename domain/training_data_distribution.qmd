@@ -53,7 +53,8 @@ Ecoregions from Dinerstein et al. 2017 will be used as our subregions.
 ```{r}
 #| output: false
 subregions = st_read("./domain/circumpolar_subregions.geojson") |>
-  st_transform(6931)
+  st_transform(6931) |>
+  select(ecoregion = ECO_NAME)
 ```
 
 ## Training Data
@@ -67,11 +68,8 @@ train_meta = gcs_get_object(
 ## Split Data
 
 ```{r}
-splits = gcs_get_object(
-  "gs://abrupt_thaw/RTS_MODEL_V2/DATA/TRAINING_DATA/splits_summary.json"
-)
+splits = jsonlite::fromJSON("./domain/data/training_v1.0_splits_summary.json")
 
-# why is this returning null elements?
 splits_df = map2_df(
   splits[["splits"]][1:3],
   names(splits[["splits"]][1:3]),
@@ -82,6 +80,18 @@ splits_df = map2_df(
     rename(ecoregion = 1) |>
     mutate(group = .y)
 )
+
+splits_yaml = yaml::read_yaml("./domain/data/training_v1.0_splits.yaml")
+train_regions = map2_df(
+  splits_yaml,
+  names(splits_yaml),
+  ~ .x |>
+    as_tibble() |>
+    rename(ecoregion = 1) |>
+    mutate(group = .y)
+) |>
+  left_join(subregions, by = "ecoregion") |>
+  st_as_sf()
 ```
 
 ## Countries Map
@@ -239,7 +249,7 @@ neg_points = train_points |>
 ```
 
 ```{r}
-# st_write(train_points, "./domain/train_points.geojson")
+# st_write(train_points, "./domain/train_points.geojson", delete_dsn = TRUE)
 ```
 
 ## Create Hex Grid
@@ -291,7 +301,7 @@ train_hex = train_points |>
 
 ```{r}
 regions_hex = train_hex |>
-  left_join(splits_df) |>
+  st_join(train_regions, largest = TRUE) |>
   summarise(
     geometry = st_union(geometry),
     .by = c(group)
@@ -401,7 +411,7 @@ total_counts = train_points |>
     angle = c(90, 0)
   )
 
-legend <- bi_legend(
+bi_legend <- bi_legend(
   pal = custom_pal4,
   dim = 4,
   xlab = "RTS Positive (Count)",
@@ -428,22 +438,21 @@ legend <- bi_legend(
       fill = fill_alpha("white", 0)
     )
   )
-# legend
+# bi_legend
 ```
 
 ### Size Legend
 
 ```{r}
 hex_legend_data = train_hex |>
-  slice(rep(1, 4))
+  slice(rep(1, 3))
 bounds = st_bbox(hex_legend_data$geometry)
 hex_legend_data = hex_legend_data |>
   mutate(
     geometry = geometry - c(bounds$xmin, bounds$ymin),
     Count = c(
       max(train_hex$Count),
-      0.5 * max(train_hex$Count),
-      0.1 * max(train_hex$Count),
+      (max(train_hex$Count) - 1) * 0.5 + 1,
       1
     ),
     Buffer = (sqrt((100000 * 2) / (3 * sqrt(3))) * sqrt(3) * 1000) /
@@ -458,6 +467,12 @@ hex_legend_data = hex_legend_data |>
 
 # hex_legend_data$geometry_scaled[[1]] = hex_legend_data$geometry_scaled[[1]] -
 #   c(0, st_bbox(hex_legend_data$geometry_scaled[[1]])$ymin)
+arrow = tibble(
+  x = 0 - 100000,
+  y = 0 + 15000,
+  xend = 0 - 100000,
+  yend = st_bbox(hex_legend_data)["ymax"] - 100000
+)
 
 size_legend = ggplot() +
   geom_sf(
@@ -472,6 +487,29 @@ size_legend = ggplot() +
     low = "white",
     high = "#3F2949"
   ) +
+  geom_segment(
+    data = arrow,
+    aes(
+      x = x,
+      y = y,
+      xend = xend,
+      yend = yend
+    ),
+    arrow = arrow(length = unit(3, "points"), angle = 45),
+    linewidth = 0.2
+  ) +
+  geom_text(
+    aes(
+      x = st_bbox(hex_legend_data)["xmax"] -
+        (st_bbox(hex_legend_data)["xmax"] - arrow$x) / 2,
+      y = arrow$y - 100000,
+      label = "Total Count"
+    ),
+    hjust = 0.5,
+    size = 1.75,
+    # angle = 90
+  ) +
+  coord_sf(clip = "off") +
   theme_void() +
   theme(
     legend.position = "none"
@@ -564,6 +602,19 @@ train_hexplot = ggplot(world_north) +
     fill = 'transparent',
     linewidth = 0.25
   ) +
+  # geom_sf(
+  #   data = full_join(
+  #     subregions,
+  #     train_regions |> st_drop_geometry(),
+  #     by = "ecoregion"
+  #   ),
+  #   aes(color = is.na(group)),
+  #   fill = "transparent"
+  # ) +
+  # scale_color_manual(
+  #   name = "Region not in\nsplits.yaml",
+  #   values = c("black", "red")
+  # ) +
   scale_x_continuous(expand = expansion(mult = c(0.01, 0.01))) +
   scale_y_continuous(expand = expansion(mult = c(0.01, 0.01))) +
   coord_sf() +
@@ -574,27 +625,41 @@ train_hexplot = ggplot(world_north) +
     legend.text = element_text(size = 5, margin = margin(0, 3, 0, 0)),
     legend.text.position = "left",
     legend.position = "inside",
-    legend.position.inside = c(0.995, 0.16),
+    legend.position.inside = c(1, 0.16),
     legend.justification = c(1, 0),
     legend.key.size = unit(13, "points"),
     legend.key.spacing.x = unit(0, "points")
     # plot.margin = margin(10, 10, 10, 10) # trying to fix the outer circle getting cut off at top, bottom, left, and right
   )
 
-inset_location = c(
-  left = 0.62 + 0.18,
-  bottom = 0.105 - 0.105,
-  right = 0.79 + 0.21,
-  top = 0.275 - 0.13
+bi_legend_location = c(
+  left = 0.81,
+  bottom = 0,
+  right = 1,
+  top = 0.145
+)
+
+size_legend_location = c(
+  left = 0.75,
+  bottom = 0.02,
+  right = 0.8,
+  top = 0.075
 )
 
 train_hexplot = train_hexplot +
   inset_element(
-    legend,
-    left = inset_location["left"],
-    bottom = inset_location["bottom"],
-    right = inset_location["right"],
-    top = inset_location["top"]
+    bi_legend,
+    left = bi_legend_location["left"],
+    bottom = bi_legend_location["bottom"],
+    right = bi_legend_location["right"],
+    top = bi_legend_location["top"]
+  ) +
+  inset_element(
+    size_legend,
+    left = size_legend_location["left"],
+    bottom = size_legend_location["bottom"],
+    right = size_legend_location["right"],
+    top = size_legend_location["top"]
   )
 train_hexplot
 ```
