@@ -61,10 +61,6 @@ subregions = st_read("./domain/circumpolar_subregions.geojson") |>
 
 ```{r}
 train_meta = gcs_get_object(
-  "gs://abrupt_thaw/RTS_MODEL_V2/DATA/TRAINING_DATA/metadata_region_hotfix.csv"
-)
-
-train_meta_old = gcs_get_object(
   "gs://abrupt_thaw/RTS_MODEL_V2/DATA/TRAINING_DATA/metadata.csv"
 )
 ```
@@ -90,15 +86,6 @@ splits_df = map2_df(
 
 ```{r}
 world = rnaturalearth::ne_countries(scale = "large", returnclass = "sf")
-world = world # |>
-# st_transform(st_crs(circumpolar)) |>
-# st_crop(
-#   subregions |>
-#     st_bbox() |>
-#     st_as_sfc() |>
-#     st_buffer(dist = 300000) |>
-#     st_bbox()
-# )
 ```
 
 ```{r}
@@ -111,12 +98,6 @@ crop_poly <- tibble(
   smoothr::densify(n = 3) %>%
   st_transform(crs = 'EPSG:4326')
 
-# arctic_circle <- tibble(lon = c(-180, 180), lat = c(66, 66)) %>%
-#   st_as_sf(coords = c("lon", "lat"), crs = "EPSG:4326") %>%
-#   summarise(geometry = st_combine(geometry)) %>%
-#   st_cast("LINESTRING") %>%
-#   smoothr::densify(max_distance = 1)
-
 world_north <- world %>%
   st_make_valid() |>
   st_intersection(crop_poly) %>%
@@ -127,9 +108,6 @@ world_north$geom[4] <- st_buffer(world_north$geom[4], 0.25)
 
 world_north <- world_north %>%
   st_union(by_feature = TRUE)
-
-# world_north_buffer <- world_north %>%
-#   st_buffer(50000)
 
 long_lines_from_coords <- function(lon, lat_min, lat_max) {
   line <- expand_grid(lon = lon, lat = c(lat_min, lat_max)) %>%
@@ -237,9 +215,6 @@ rts_points = train_points |>
 
 neg_points = train_points |>
   filter(TrainClass == "negative")
-
-# train_bboxes = train_points |>
-#   st_buffer(dist = 4.77 * 256, endCapStyle = "SQUARE")
 ```
 
 ```{r}
@@ -299,7 +274,7 @@ regions_hex = train_hex |>
     .by = c(group)
   ) |>
   mutate(
-    geometry_offset = st_buffer(geometry, dist = -5000),
+    geometry_offset = st_buffer(geometry, dist = -7000),
     group = factor(
       case_when(
         str_detect(group, "test") ~ "Testing",
@@ -319,8 +294,7 @@ examples = train_hex |>
   filter(
     RTSCount == max(RTSCount) |
       NoRTSCount == max(NoRTSCount) |
-      abs(RTSCount - NoRTSCount) / Count ==
-        min(abs(RTSCount - NoRTSCount) / Count)
+      RTSCount > 100 & NoRTSCount > 100
   ) |>
   mutate(
     geometry_centroid = st_centroid(geometry),
@@ -335,8 +309,8 @@ examples = examples %>%
   ) |>
   rename(x_start = X, y_start = Y) |>
   mutate(
-    x_end = x_start + c(800000, 630000, 180000),
-    y_end = y_start + c(450000, -350000, -1100000),
+    x_end = x_start + c(630000, 630000, -1200000),
+    y_end = y_start + c(-350000, -350000, 0),
     label = paste0("Positive: ", RTSCount, "\nNegative: ", NoRTSCount),
     label_total = paste0("Total: ", Count)
   )
@@ -398,9 +372,9 @@ total_counts = train_points |>
   summarise(n = n(), .by = c(TrainClass)) |>
   mutate(
     n = paste("Total:", n),
-    x = c(-1.35, 2),
-    y = c(2, -0.9),
-    angle = c(90, 0)
+    x = c(2, -1.35),
+    y = c(-0.9, 2),
+    angle = c(0, 90)
   )
 
 bi_legend <- bi_legend(
@@ -457,8 +431,6 @@ hex_legend_data = hex_legend_data |>
     geometry_scaled = geometry_scaled - c(0, st_bbox(geometry_scaled)$ymin)
   )
 
-# hex_legend_data$geometry_scaled[[1]] = hex_legend_data$geometry_scaled[[1]] -
-#   c(0, st_bbox(hex_legend_data$geometry_scaled[[1]])$ymin)
 arrow = tibble(
   x = 0 - 100000,
   y = 0 + 15000,
@@ -511,57 +483,6 @@ size_legend
 
 ### Map
 
-Why don't all the training tiles have a split group?
-
-```{r}
-train_meta_old = train_meta_old %>%
-  left_join(splits_df, by = c("RegionName" = "ecoregion")) %>%
-  st_as_sf(coords = c("centroid_lon", "centroid_lat"), crs = 4326) %>%
-  st_transform(crs = 6931) %>%
-  bind_cols(st_coordinates(.))
-
-# train_points_disagreement = train_points |>
-#   st_join(subregions) |>
-#   mutate(incorrect_region = RegionName != ecoregion) |>
-#   select(
-#     Tile_ID,
-#     TrainClass,
-#     X,
-#     Y,
-#     RTS,
-#     NoRTS,
-#     RegionName,
-#     ecoregion,
-#     incorrect_region
-#   )
-
-ggplot(
-  world_north |>
-    st_crop(
-      subregions |>
-        filter(
-          ecoregion %in% c("Beringia upland tundra", "Arctic foothills tundra")
-        )
-    )
-) +
-  geom_sf(
-    color = 'transparent',
-    fill = 'gray90'
-  ) +
-  geom_sf(
-    data = subregions |>
-      filter(
-        ecoregion %in% c("Beringia upland tundra", "Arctic foothills tundra")
-      ),
-    aes(color = ecoregion)
-  ) +
-  geom_sf(
-    data = train_points |>
-      filter(RegionName == "Arctic foothills tundra"),
-    aes(color = "RegionName == 'Beringia upland tundra'")
-  )
-```
-
 ```{r}
 #| fig-width: 6.5
 #| fig-height: 6.5
@@ -582,16 +503,16 @@ train_hexplot = ggplot(world_north) +
   ) +
   geom_sf(
     data = train_hex,
+    aes(geometry = geometry_scaled, fill = bi_class),
+    color = "transparent",
+    alpha = 1
+  ) +
+  geom_sf(
+    data = train_hex,
     aes(geometry = geometry),
     fill = "transparent",
     color = "gray95",
     linewidth = 0.5
-  ) +
-  geom_sf(
-    data = train_hex,
-    aes(geometry = geometry_scaled, fill = bi_class),
-    color = "transparent",
-    alpha = 1
   ) +
   bi_scale_fill(
     pal = custom_pal4,
@@ -609,18 +530,18 @@ train_hexplot = ggplot(world_north) +
   ) +
   scale_linetype_manual(
     name = "Training\nGroup",
-    # guide = guide_legend(reverse = TRUE),
     values = c("solid", "longdash", "dotted")
   ) +
   geom_segment(
     data = examples,
-    aes(x = x_start, xend = x_end, y = y_start, yend = y_end)
+    aes(x = x_start, xend = x_end, y = y_start, yend = y_end),
+    linewidth = 0.5
   ) +
   geom_text(
     data = examples,
     aes(
-      x = x_end + c(50000, 50000, -350000),
-      y = y_end + c(0, 0, -150000),
+      x = x_end + c(50000, 50000, -900000),
+      y = y_end + c(50000, 50000, 50000),
       label = label
     ),
     size = 2,
@@ -630,8 +551,8 @@ train_hexplot = ggplot(world_north) +
   geom_text(
     data = examples,
     aes(
-      x = x_end + c(50000, 50000, -350000),
-      y = y_end + c(rep(-250000, 2), -250000 - 150000),
+      x = x_end + c(50000, 50000, -900000),
+      y = y_end + c(-200000, -200000, -200000),
       label = label_total
     ),
     size = 2,
@@ -664,15 +585,13 @@ train_hexplot = ggplot(world_north) +
   theme_void() +
   theme(
     legend.title = element_blank(),
-    # legend.title = element_text(size = 5.5),
     legend.text = element_text(size = 5, margin = margin(0, 3, 0, 0)),
     legend.text.position = "left",
     legend.position = "inside",
-    legend.position.inside = c(1, 0.16),
+    legend.position.inside = c(1, 0.17),
     legend.justification = c(1, 0),
     legend.key.size = unit(13, "points"),
     legend.key.spacing.x = unit(0, "points")
-    # plot.margin = margin(10, 10, 10, 10) # trying to fix the outer circle getting cut off at top, bottom, left, and right
   )
 
 bi_legend_location = c(

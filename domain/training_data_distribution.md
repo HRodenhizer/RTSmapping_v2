@@ -16,20 +16,20 @@ region_train_count = train_meta |>
 region_train_count
 ```
 
-    # A tibble: 50 × 3
-       RegionName                        RTSCount RTSPercent
-       <chr>                                <int>      <dbl>
-     1 Trans-Baikal Bald Mountain tundra     1385     0.0892
-     2 Taimyr-Central Siberian tundra        1294     0.0833
-     3 Yamal-Gydan tundra                    1270     0.0818
-     4 East Siberian taiga                   1145     0.0737
-     5 Russian Bering tundra                  784     0.0505
-     6 West Siberian taiga                    784     0.0505
-     7 Northwest Territories taiga            692     0.0446
-     8 Muskwa-Slave Lake taiga                611     0.0393
-     9 Urals montane forest and taiga         593     0.0382
-    10 Eastern Canadian Shield taiga          455     0.0293
-    # ℹ 40 more rows
+    # A tibble: 49 × 3
+       RegionName                             RTSCount RTSPercent
+       <chr>                                     <int>      <dbl>
+     1 East Siberian taiga                        4705     0.211 
+     2 Yamal-Gydan tundra                         3400     0.152 
+     3 Taimyr-Central Siberian tundra             1937     0.0869
+     4 Canadian Low Arctic tundra                 1470     0.0659
+     5 Canadian Middle Arctic Tundra              1424     0.0639
+     6 Northeast Siberian taiga                   1235     0.0554
+     7 West Siberian taiga                         876     0.0393
+     8 Northwest Russian-Novaya Zemlya tundra      745     0.0334
+     9 Russian Bering tundra                       679     0.0305
+    10 Cherskii-Kolyma mountain tundra             588     0.0264
+    # ℹ 39 more rows
 
 ![](training_data_distribution_files/figure-commonmark/unnamed-chunk-11-1.png)
 
@@ -45,7 +45,7 @@ small_clusters_percent
     # A tibble: 1 × 1
       TotalPercentSmallClusters
                           <dbl>
-    1                         1
+    1                     0.636
 
 # Map Training Data
 
@@ -53,6 +53,7 @@ small_clusters_percent
 
 ``` r
 train_points = train_meta %>%
+  left_join(splits_df, by = c("RegionName" = "ecoregion")) %>%
   st_as_sf(coords = c("centroid_lon", "centroid_lat"), crs = 4326) %>%
   st_transform(crs = 6931) %>%
   bind_cols(st_coordinates(.)) |>
@@ -65,20 +66,18 @@ train_points = train_meta %>%
       TrainClass == "positive" ~ 0,
       TrainClass == "negative" ~ 1
     ))
-  )
+  ) |>
+  st_as_sf()
 
 rts_points = train_points |>
   filter(TrainClass == "positive")
 
 neg_points = train_points |>
   filter(TrainClass == "negative")
-
-# train_bboxes = train_points |>
-#   st_buffer(dist = 4.77 * 256, endCapStyle = "SQUARE")
 ```
 
 ``` r
-# st_write(train_points, "./domain/train_points.geojson")
+# st_write(train_points, "./domain/train_points.geojson", delete_dsn = TRUE)
 ```
 
 ## Create Hex Grid
@@ -102,21 +101,8 @@ train_hex = train_points |>
     NoRTSCount = sum(NoRTS),
     .by = c(geometry)
   ) |>
-  # bi_class(
-  #   x = RTSCount,
-  #   y = NoRTSCount,
-  #   style = "equal",
-  #   dim = 3
-  # ) |>
   rowwise() |>
   mutate(
-    # bi_class = str_flatten(
-    #   map_df(
-    #     as_tibble(str_split(bi_class, "-", simplify = TRUE)),
-    #     ~ as.numeric(.x) + 1
-    #   ),
-    #   collapse = "-"
-    # )
     bi_class = str_flatten(
       c(
         classify_counts(RTSCount, breaks = class_breaks),
@@ -127,26 +113,15 @@ train_hex = train_points |>
   ) |>
   ungroup() |>
   mutate(
-    # bi_class = case_when(
-    #   bi_class == "2-2" & RTSCount == 0 & NoRTSCount == 0 ~
-    #     "1-1",
-    #   bi_class == "2-2" & RTSCount == 0 & NoRTSCount != 0 ~
-    #     "1-2",
-    #   bi_class == "2-2" & RTSCount != 0 & NoRTSCount == 0 ~
-    #     "2-1",
-    #   TRUE ~ bi_class
-    # ),
     Buffer = (sqrt((100000 * 2) / (3 * sqrt(3))) * sqrt(3) * 1000) /
       2 *
       (0.9 - sqrt(Count / max(Count)) * 0.9), # use this ratio to scale the hexagons by total count: hexagon short side length * percentile of total count
     geometry_scaled = st_buffer(geometry, dist = Buffer * -1) # geometry of scaled hexagons
   ) |>
   st_join(
-    subregions |>
-      select(-COLOR),
+    subregions,
     largest = TRUE
-  ) |>
-  rename(ecoregion = ECO_NAME)
+  )
 ```
 
     Warning: attribute variables are assumed to be spatially constant throughout
@@ -156,13 +131,13 @@ train_hex = train_points |>
 
 ``` r
 regions_hex = train_hex |>
-  left_join(splits_df) |>
+  st_join(splits_df, largest = TRUE) |>
   summarise(
     geometry = st_union(geometry),
     .by = c(group)
   ) |>
   mutate(
-    geometry_offset = st_buffer(geometry, dist = -5000),
+    geometry_offset = st_buffer(geometry, dist = -7000),
     group = factor(
       case_when(
         str_detect(group, "test") ~ "Testing",
@@ -175,7 +150,8 @@ regions_hex = train_hex |>
   filter(!is.na(group))
 ```
 
-    Joining with `by = join_by(ecoregion)`
+    Warning: attribute variables are assumed to be spatially constant throughout
+    all geometries
 
 ## Examples for Map Labels
 
@@ -184,8 +160,7 @@ examples = train_hex |>
   filter(
     RTSCount == max(RTSCount) |
       NoRTSCount == max(NoRTSCount) |
-      abs(RTSCount - NoRTSCount) / Count ==
-        min(abs(RTSCount - NoRTSCount) / Count)
+      RTSCount > 100 & NoRTSCount > 100
   ) |>
   mutate(
     geometry_centroid = st_centroid(geometry),
@@ -200,8 +175,8 @@ examples = examples %>%
   ) |>
   rename(x_start = X, y_start = Y) |>
   mutate(
-    x_end = x_start + c(800000, 630000, 180000),
-    y_end = y_start + c(450000, -350000, -1100000),
+    x_end = x_start + c(630000, 630000, -1200000),
+    y_end = y_start + c(-350000, -350000, 0),
     label = paste0("Positive: ", RTSCount, "\nNegative: ", NoRTSCount),
     label_total = paste0("Total: ", Count)
   )
@@ -255,7 +230,7 @@ custom_pal4 <- c(
 )
 ```
 
-### Legend
+### Bivariate Legend
 
 ``` r
 total_counts = train_points |>
@@ -263,12 +238,12 @@ total_counts = train_points |>
   summarise(n = n(), .by = c(TrainClass)) |>
   mutate(
     n = paste("Total:", n),
-    x = c(-1.35, 2),
-    y = c(2, -0.9),
-    angle = c(90, 0)
+    x = c(2, -1.35),
+    y = c(-0.9, 2),
+    angle = c(0, 90)
   )
 
-legend <- bi_legend(
+bi_legend <- bi_legend(
   pal = custom_pal4,
   dim = 4,
   xlab = "RTS Positive (Count)",
@@ -301,8 +276,84 @@ legend <- bi_legend(
     ℹ Adding new coordinate system, which will replace the existing one.
 
 ``` r
-# legend
+# bi_legend
 ```
+
+### Size Legend
+
+``` r
+hex_legend_data = train_hex |>
+  slice(rep(1, 3))
+bounds = st_bbox(hex_legend_data$geometry)
+hex_legend_data = hex_legend_data |>
+  mutate(
+    geometry = geometry - c(bounds$xmin, bounds$ymin),
+    Count = c(
+      max(train_hex$Count),
+      (max(train_hex$Count) - 1) * 0.5 + 1,
+      1
+    ),
+    Buffer = (sqrt((100000 * 2) / (3 * sqrt(3))) * sqrt(3) * 1000) /
+      2 *
+      (0.9 - sqrt(Count / max(Count)) * 0.9), # use this ratio to scale the hexagons by total count: hexagon short side length * percentile of total count
+    geometry_scaled = st_buffer(geometry, dist = Buffer * -1) # geometry of scaled hexagons
+  ) |>
+  rowwise() |>
+  mutate(
+    geometry_scaled = geometry_scaled - c(0, st_bbox(geometry_scaled)$ymin)
+  )
+
+arrow = tibble(
+  x = 0 - 100000,
+  y = 0 + 15000,
+  xend = 0 - 100000,
+  yend = st_bbox(hex_legend_data)["ymax"] - 100000
+)
+
+size_legend = ggplot() +
+  geom_sf(
+    data = hex_legend_data,
+    aes(
+      geometry = geometry_scaled,
+      fill = Count
+    ),
+    color = "transparent"
+  ) +
+  scale_fill_gradient(
+    low = "white",
+    high = "#3F2949"
+  ) +
+  geom_segment(
+    data = arrow,
+    aes(
+      x = x,
+      y = y,
+      xend = xend,
+      yend = yend
+    ),
+    arrow = arrow(length = unit(3, "points"), angle = 45),
+    linewidth = 0.2
+  ) +
+  geom_text(
+    aes(
+      x = st_bbox(hex_legend_data)["xmax"] -
+        (st_bbox(hex_legend_data)["xmax"] - arrow$x) / 2,
+      y = arrow$y - 100000,
+      label = "Total Count"
+    ),
+    hjust = 0.5,
+    size = 1.75,
+    # angle = 90
+  ) +
+  coord_sf(clip = "off") +
+  theme_void() +
+  theme(
+    legend.position = "none"
+  )
+size_legend
+```
+
+![](training_data_distribution_files/figure-commonmark/unnamed-chunk-21-1.png)
 
 ### Map
 
@@ -324,16 +375,16 @@ train_hexplot = ggplot(world_north) +
   ) +
   geom_sf(
     data = train_hex,
+    aes(geometry = geometry_scaled, fill = bi_class),
+    color = "transparent",
+    alpha = 1
+  ) +
+  geom_sf(
+    data = train_hex,
     aes(geometry = geometry),
     fill = "transparent",
     color = "gray95",
     linewidth = 0.5
-  ) +
-  geom_sf(
-    data = train_hex,
-    aes(geometry = geometry_scaled, fill = bi_class),
-    color = "transparent",
-    alpha = 1
   ) +
   bi_scale_fill(
     pal = custom_pal4,
@@ -351,18 +402,18 @@ train_hexplot = ggplot(world_north) +
   ) +
   scale_linetype_manual(
     name = "Training\nGroup",
-    # guide = guide_legend(reverse = TRUE),
     values = c("solid", "longdash", "dotted")
   ) +
   geom_segment(
     data = examples,
-    aes(x = x_start, xend = x_end, y = y_start, yend = y_end)
+    aes(x = x_start, xend = x_end, y = y_start, yend = y_end),
+    linewidth = 0.5
   ) +
   geom_text(
     data = examples,
     aes(
-      x = x_end + c(50000, 50000, -350000),
-      y = y_end + c(0, 0, -150000),
+      x = x_end + c(50000, 50000, -900000),
+      y = y_end + c(50000, 50000, 50000),
       label = label
     ),
     size = 2,
@@ -372,8 +423,8 @@ train_hexplot = ggplot(world_north) +
   geom_text(
     data = examples,
     aes(
-      x = x_end + c(50000, 50000, -350000),
-      y = y_end + c(rep(-250000, 2), -250000 - 150000),
+      x = x_end + c(50000, 50000, -900000),
+      y = y_end + c(-200000, -200000, -200000),
       label = label_total
     ),
     size = 2,
@@ -387,42 +438,67 @@ train_hexplot = ggplot(world_north) +
     fill = 'transparent',
     linewidth = 0.25
   ) +
+  # geom_sf(
+  #   data = full_join(
+  #     subregions,
+  #     splits_df |> st_drop_geometry(),
+  #     by = "ecoregion"
+  #   ),
+  #   aes(color = is.na(group)),
+  #   fill = "transparent"
+  # ) +
+  # scale_color_manual(
+  #   name = "Region not in\nsplits.yaml",
+  #   values = c("black", "red")
+  # ) +
   scale_x_continuous(expand = expansion(mult = c(0.01, 0.01))) +
   scale_y_continuous(expand = expansion(mult = c(0.01, 0.01))) +
   coord_sf() +
   theme_void() +
   theme(
     legend.title = element_blank(),
-    # legend.title = element_text(size = 5.5),
     legend.text = element_text(size = 5, margin = margin(0, 3, 0, 0)),
     legend.text.position = "left",
     legend.position = "inside",
-    legend.position.inside = c(0.995, 0.16),
+    legend.position.inside = c(1, 0.17),
     legend.justification = c(1, 0),
     legend.key.size = unit(13, "points"),
     legend.key.spacing.x = unit(0, "points")
-    # plot.margin = margin(10, 10, 10, 10) # trying to fix the outer circle getting cut off at top, bottom, left, and right
   )
 
-inset_location = c(
-  left = 0.62 + 0.18,
-  bottom = 0.105 - 0.105,
-  right = 0.79 + 0.21,
-  top = 0.275 - 0.13
+bi_legend_location = c(
+  left = 0.81,
+  bottom = 0,
+  right = 1,
+  top = 0.145
+)
+
+size_legend_location = c(
+  left = 0.75,
+  bottom = 0.02,
+  right = 0.8,
+  top = 0.075
 )
 
 train_hexplot = train_hexplot +
   inset_element(
-    legend,
-    left = inset_location["left"],
-    bottom = inset_location["bottom"],
-    right = inset_location["right"],
-    top = inset_location["top"]
+    bi_legend,
+    left = bi_legend_location["left"],
+    bottom = bi_legend_location["bottom"],
+    right = bi_legend_location["right"],
+    top = bi_legend_location["top"]
+  ) +
+  inset_element(
+    size_legend,
+    left = size_legend_location["left"],
+    bottom = size_legend_location["bottom"],
+    right = size_legend_location["right"],
+    top = size_legend_location["top"]
   )
 train_hexplot
 ```
 
-![](training_data_distribution_files/figure-commonmark/unnamed-chunk-21-1.png)
+![](training_data_distribution_files/figure-commonmark/unnamed-chunk-22-1.png)
 
 ``` r
 ggsave(
