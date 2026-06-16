@@ -61,6 +61,10 @@ subregions = st_read("./domain/circumpolar_subregions.geojson") |>
 
 ```{r}
 train_meta = gcs_get_object(
+  "gs://abrupt_thaw/RTS_MODEL_V2/DATA/TRAINING_DATA/metadata_region_hotfix.csv"
+)
+
+train_meta_old = gcs_get_object(
   "gs://abrupt_thaw/RTS_MODEL_V2/DATA/TRAINING_DATA/metadata.csv"
 )
 ```
@@ -68,30 +72,18 @@ train_meta = gcs_get_object(
 ## Split Data
 
 ```{r}
-splits = jsonlite::fromJSON("./domain/data/training_v1.0_splits_summary.json")
-
+splits = yaml::read_yaml("./domain/data/training_v1.0_splits.yaml")
 splits_df = map2_df(
-  splits[["splits"]][1:3],
-  names(splits[["splits"]][1:3]),
-  ~ .x |>
-    pluck("ecoregions") |>
-    unlist() |>
-    as_tibble() |>
-    rename(ecoregion = 1) |>
-    mutate(group = .y)
-)
-
-splits_yaml = yaml::read_yaml("./domain/data/training_v1.0_splits.yaml")
-train_regions = map2_df(
-  splits_yaml,
-  names(splits_yaml),
+  splits[1:3],
+  names(splits)[1:3],
   ~ .x |>
     as_tibble() |>
     rename(ecoregion = 1) |>
     mutate(group = .y)
 ) |>
   left_join(subregions, by = "ecoregion") |>
-  st_as_sf()
+  st_as_sf() |>
+  filter(group != "val_balanced")
 ```
 
 ## Countries Map
@@ -224,6 +216,7 @@ small_clusters_percent
 
 ```{r}
 train_points = train_meta %>%
+  left_join(splits_df, by = c("RegionName" = "ecoregion")) %>%
   st_as_sf(coords = c("centroid_lon", "centroid_lat"), crs = 4326) %>%
   st_transform(crs = 6931) %>%
   bind_cols(st_coordinates(.)) |>
@@ -236,7 +229,8 @@ train_points = train_meta %>%
       TrainClass == "positive" ~ 0,
       TrainClass == "negative" ~ 1
     ))
-  )
+  ) |>
+  st_as_sf()
 
 rts_points = train_points |>
   filter(TrainClass == "positive")
@@ -290,18 +284,16 @@ train_hex = train_points |>
     geometry_scaled = st_buffer(geometry, dist = Buffer * -1) # geometry of scaled hexagons
   ) |>
   st_join(
-    subregions |>
-      select(-COLOR),
+    subregions,
     largest = TRUE
-  ) |>
-  rename(ecoregion = ECO_NAME)
+  )
 ```
 
 ### Region Hex
 
 ```{r}
 regions_hex = train_hex |>
-  st_join(train_regions, largest = TRUE) |>
+  st_join(splits_df, largest = TRUE) |>
   summarise(
     geometry = st_union(geometry),
     .by = c(group)
@@ -519,6 +511,57 @@ size_legend
 
 ### Map
 
+Why don't all the training tiles have a split group?
+
+```{r}
+train_meta_old = train_meta_old %>%
+  left_join(splits_df, by = c("RegionName" = "ecoregion")) %>%
+  st_as_sf(coords = c("centroid_lon", "centroid_lat"), crs = 4326) %>%
+  st_transform(crs = 6931) %>%
+  bind_cols(st_coordinates(.))
+
+# train_points_disagreement = train_points |>
+#   st_join(subregions) |>
+#   mutate(incorrect_region = RegionName != ecoregion) |>
+#   select(
+#     Tile_ID,
+#     TrainClass,
+#     X,
+#     Y,
+#     RTS,
+#     NoRTS,
+#     RegionName,
+#     ecoregion,
+#     incorrect_region
+#   )
+
+ggplot(
+  world_north |>
+    st_crop(
+      subregions |>
+        filter(
+          ecoregion %in% c("Beringia upland tundra", "Arctic foothills tundra")
+        )
+    )
+) +
+  geom_sf(
+    color = 'transparent',
+    fill = 'gray90'
+  ) +
+  geom_sf(
+    data = subregions |>
+      filter(
+        ecoregion %in% c("Beringia upland tundra", "Arctic foothills tundra")
+      ),
+    aes(color = ecoregion)
+  ) +
+  geom_sf(
+    data = train_points |>
+      filter(RegionName == "Arctic foothills tundra"),
+    aes(color = "RegionName == 'Beringia upland tundra'")
+  )
+```
+
 ```{r}
 #| fig-width: 6.5
 #| fig-height: 6.5
@@ -605,7 +648,7 @@ train_hexplot = ggplot(world_north) +
   # geom_sf(
   #   data = full_join(
   #     subregions,
-  #     train_regions |> st_drop_geometry(),
+  #     splits_df |> st_drop_geometry(),
   #     by = "ecoregion"
   #   ),
   #   aes(color = is.na(group)),
