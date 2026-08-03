@@ -26,8 +26,8 @@ theme_set(theme_bw())
 # Define Functions
 
 ```{r}
-classify_counts = function(count_data, breaks) {
-  new_count_data = case_when(
+classify_counts <- function(count_data, breaks) {
+  new_count_data <- case_when(
     count_data == breaks[1] ~ "1",
     count_data <= breaks[3] ~ "2",
     count_data <= breaks[4] ~ "3",
@@ -42,50 +42,40 @@ classify_counts = function(count_data, breaks) {
 
 ```{r}
 #| output: false
-circumpolar = st_read("./domain/circumpolar_domain.geojson") |>
+circumpolar <- st_read("./domain/circumpolar_domain.geojson") |>
   st_transform(6931)
 ```
 
-## Subregions
-
-Ecoregions from Dinerstein et al. 2017 will be used as our subregions.
-
-```{r}
-#| output: false
-subregions = st_read("./domain/circumpolar_subregions.geojson") |>
-  st_transform(6931) |>
-  select(ecoregion = ECO_NAME)
-```
-
 ## Training Data
-
+It should be noted that the RegionName in metadata.csv does not always correspond to the correct subregion from Dinerstein et al. 2017, as some of the training tiles fell outside of the extent of the circumpolar_subregions.geojson file that was used to determine the RegionName. This does not present a problem for model training as the RegionName from metadata.csv was used in the creation of splits.yaml.
 ```{r}
-train_meta = gcs_get_object(
-  "gs://abrupt_thaw/RTS_MODEL_V2/DATA/TRAINING_DATA/metadata.csv"
-)
+# train_meta = gcs_get_object(
+#   "gs://rts-mapping-v2/training/v1.0/metadata.csv"
+# ) # This causes R to crash, but is the correct source file.
+train_meta <- read.csv(
+  "./domain/data/training_v1.0_metadata.csv"
+) # read_csv causes R to crash
 ```
 
 ## Split Data
 
 ```{r}
-splits = yaml::read_yaml("./domain/data/training_v1.0_splits.yaml")
-splits_df = map2_df(
+# Splits from "gs://rts-mapping-v2/training/v1.0/splits.yaml"
+splits <- yaml::read_yaml("./domain/data/training_v1.0_splits.yaml")
+splits_df <- map2_df(
   splits[1:3],
   names(splits)[1:3],
   ~ .x |>
     as_tibble() |>
     rename(ecoregion = 1) |>
     mutate(group = .y)
-) |>
-  left_join(subregions, by = "ecoregion") |>
-  st_as_sf() |>
-  filter(group != "val_balanced")
+)
 ```
 
 ## Countries Map
 
 ```{r}
-world = rnaturalearth::ne_countries(scale = "large", returnclass = "sf")
+world <- rnaturalearth::ne_countries(scale = "medium", returnclass = "sf")
 ```
 
 ```{r}
@@ -147,7 +137,7 @@ lat_lines <- seq(50, 90, by = 10) %>%
 # Check Training Polygon Counts by Subregion
 
 ```{r}
-region_train_count = train_meta |>
+region_train_count <- train_meta |>
   summarise(
     RTSCount = n(),
     .by = RegionName
@@ -182,7 +172,7 @@ ggplot(
 ```
 
 ```{r}
-small_clusters_percent = region_train_count |>
+small_clusters_percent <- region_train_count |>
   filter(RTSPercent < 0.1) |>
   summarise(TotalPercentSmallClusters = sum(RTSPercent))
 small_clusters_percent
@@ -193,7 +183,7 @@ small_clusters_percent
 ## Convert metadata to sf
 
 ```{r}
-train_points = train_meta %>%
+train_points <- train_meta %>%
   left_join(splits_df, by = c("RegionName" = "ecoregion")) %>%
   st_as_sf(coords = c("centroid_lon", "centroid_lat"), crs = 4326) %>%
   st_transform(crs = 6931) %>%
@@ -210,10 +200,10 @@ train_points = train_meta %>%
   ) |>
   st_as_sf()
 
-rts_points = train_points |>
+rts_points <- train_points |>
   filter(TrainClass == "positive")
 
-neg_points = train_points |>
+neg_points <- train_points |>
   filter(TrainClass == "negative")
 ```
 
@@ -225,9 +215,9 @@ neg_points = train_points |>
 ### Count Scaled Hex
 
 ```{r}
-class_breaks = c(0, 1, 100, 200)
+class_breaks <- c(0, 1, 100, 200)
 
-train_hex = train_points |>
+train_hex <- train_points |>
   st_make_grid(
     cellsize = sqrt((100000 * 2) / (3 * sqrt(3))) * sqrt(3) * 1000, # get short side length of hexagon from area == 10000 km^2, and convert to m
     square = FALSE
@@ -239,6 +229,7 @@ train_hex = train_points |>
     Count = n(),
     RTSCount = sum(RTS),
     NoRTSCount = sum(NoRTS),
+    ecoregion = names(sort(table(RegionName), decreasing = TRUE)[1]),
     .by = c(geometry)
   ) |>
   rowwise() |>
@@ -257,18 +248,14 @@ train_hex = train_points |>
       2 *
       (0.9 - sqrt(Count / max(Count)) * 0.9), # use this ratio to scale the hexagons by total count: hexagon short side length * percentile of total count
     geometry_scaled = st_buffer(geometry, dist = Buffer * -1) # geometry of scaled hexagons
-  ) |>
-  st_join(
-    subregions,
-    largest = TRUE
   )
 ```
 
 ### Region Hex
 
 ```{r}
-regions_hex = train_hex |>
-  st_join(splits_df, largest = TRUE) |>
+regions_hex <- train_hex |>
+  left_join(splits_df, by = c("ecoregion")) |>
   summarise(
     geometry = st_union(geometry),
     .by = c(group)
@@ -283,14 +270,13 @@ regions_hex = train_hex |>
       ),
       levels = c("Training", "Validation", "Testing")
     )
-  ) |>
-  filter(!is.na(group))
+  )
 ```
 
 ## Examples for Map Labels
 
 ```{r}
-examples = train_hex |>
+examples <- train_hex |>
   filter(
     RTSCount == max(RTSCount) |
       NoRTSCount == max(NoRTSCount) |
@@ -303,7 +289,7 @@ examples = train_hex |>
   ) |>
   st_set_geometry("geometry_centroid") |>
   select(Count, RTSCount, NoRTSCount, nudge_x, nudge_y)
-examples = examples %>%
+examples <- examples %>%
   bind_cols(
     st_coordinates(.$geometry_centroid)
   ) |>
@@ -322,24 +308,24 @@ examples = examples %>%
 
 ```{r}
 # column 1
-reds = colorRampPalette(c("#FFFFFF", "#AE3A4E"))
+reds <- colorRampPalette(c("#FFFFFF", "#AE3A4E"))
 reds_4 <- reds(4)
 # row 1
-blues = colorRampPalette(c("#FFFFFF", "#4885C1"))
+blues <- colorRampPalette(c("#FFFFFF", "#4885C1"))
 blues_4 <- blues(4)
 # purples = colorRampPalette(c("#FFFFFF", "#3F2949"))
 # purples_4 <- purples(4)
 # row 4
-red_purples = colorRampPalette(c("#AE3A4E", "#3F2949"))
-red_purples_4 = red_purples(4)
+red_purples <- colorRampPalette(c("#AE3A4E", "#3F2949"))
+red_purples_4 <- red_purples(4)
 # column 4
-blue_purples = colorRampPalette(c("#4885C1", "#3F2949"))
-blue_purples_4 = blue_purples(4)
+blue_purples <- colorRampPalette(c("#4885C1", "#3F2949"))
+blue_purples_4 <- blue_purples(4)
 # column 2 from blues and red_purples
-column2s = colorRampPalette(c(blues_4[2], red_purples_4[2]))
+column2s <- colorRampPalette(c(blues_4[2], red_purples_4[2]))
 column2s_4 <- column2s(4)
 # column 3 from blues and red_purples
-column3s = colorRampPalette(c(blues_4[3], red_purples_4[3]))
+column3s <- colorRampPalette(c(blues_4[3], red_purples_4[3]))
 column3s_4 <- column3s(4)
 
 
@@ -367,7 +353,7 @@ custom_pal4 <- c(
 ### Bivariate Legend
 
 ```{r}
-total_counts = train_points |>
+total_counts <- train_points |>
   st_drop_geometry() |>
   summarise(n = n(), .by = c(TrainClass)) |>
   mutate(
@@ -410,10 +396,10 @@ bi_legend <- bi_legend(
 ### Size Legend
 
 ```{r}
-hex_legend_data = train_hex |>
+hex_legend_data <- train_hex |>
   slice(rep(1, 3))
-bounds = st_bbox(hex_legend_data$geometry)
-hex_legend_data = hex_legend_data |>
+bounds <- st_bbox(hex_legend_data$geometry)
+hex_legend_data <- hex_legend_data |>
   mutate(
     geometry = geometry - c(bounds$xmin, bounds$ymin),
     Count = c(
@@ -431,14 +417,14 @@ hex_legend_data = hex_legend_data |>
     geometry_scaled = geometry_scaled - c(0, st_bbox(geometry_scaled)$ymin)
   )
 
-arrow = tibble(
+arrow <- tibble(
   x = 0 - 100000,
   y = 0 + 15000,
   xend = 0 - 100000,
   yend = st_bbox(hex_legend_data)["ymax"] - 100000
 )
 
-size_legend = ggplot() +
+size_legend <- ggplot() +
   geom_sf(
     data = hex_legend_data,
     aes(
@@ -478,7 +464,7 @@ size_legend = ggplot() +
   theme(
     legend.position = "none"
   )
-size_legend
+# size_legend
 ```
 
 ### Map
@@ -486,7 +472,7 @@ size_legend
 ```{r}
 #| fig-width: 6.5
 #| fig-height: 6.5
-train_hexplot = ggplot(world_north) +
+train_hexplot <- ggplot(world_north) +
   geom_sf(
     data = long_lines,
     color = 'gray85',
@@ -566,19 +552,6 @@ train_hexplot = ggplot(world_north) +
     fill = 'transparent',
     linewidth = 0.25
   ) +
-  # geom_sf(
-  #   data = full_join(
-  #     subregions,
-  #     splits_df |> st_drop_geometry(),
-  #     by = "ecoregion"
-  #   ),
-  #   aes(color = is.na(group)),
-  #   fill = "transparent"
-  # ) +
-  # scale_color_manual(
-  #   name = "Region not in\nsplits.yaml",
-  #   values = c("black", "red")
-  # ) +
   scale_x_continuous(expand = expansion(mult = c(0.01, 0.01))) +
   scale_y_continuous(expand = expansion(mult = c(0.01, 0.01))) +
   coord_sf() +
@@ -594,21 +567,21 @@ train_hexplot = ggplot(world_north) +
     legend.key.spacing.x = unit(0, "points")
   )
 
-bi_legend_location = c(
+bi_legend_location <- c(
   left = 0.81,
   bottom = 0,
   right = 1,
   top = 0.145
 )
 
-size_legend_location = c(
+size_legend_location <- c(
   left = 0.75,
   bottom = 0.02,
   right = 0.8,
   top = 0.075
 )
 
-train_hexplot = train_hexplot +
+train_hexplot <- train_hexplot +
   inset_element(
     bi_legend,
     left = bi_legend_location["left"],
