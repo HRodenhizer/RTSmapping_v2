@@ -1,0 +1,58 @@
+train:
+- Taimyr-Central Siberian tundra
+- Russian Bering tundra
+- Muskwa-Slave Lake taiga
+- Canadian Middle Arctic Tundra
+- Brooks-British Range tundra
+- Chukchi Peninsula tundra
+- Kamchatka tundra
+- Yamal-Gydan tundra
+- Urals montane forest and taiga
+- Copper Plateau taiga
+- Alaska Peninsula montane taiga
+- Alaska-St. Elias Range tundra
+- Midwest Canadian Shield forests
+- Watson Highlands taiga
+- Canadian High Arctic tundra
+- Beringia upland tundra
+- Ogilvie-MacKenzie alpine tundra
+- Pacific Coastal Mountain icefields and tundra
+- Kola Peninsula tundra
+- Scandinavian and Russian taiga
+- Interior Yukon-Alaska alpine tundra
+- Iceland boreal birch forests and alpine tundra
+- Torngat Mountain tundra
+- Wrangel Island Arctic desert
+- Kamchatka taiga
+- Northeast Siberian taiga
+- Davis Highlands tundra
+- Russian Arctic desert
+- Arctic coastal tundra
+- Ahklun and Kilbuck Upland Tundra
+- Scandinavian Montane Birch forest and grasslands
+- Kalaallit Nunaat Arctic steppe
+- Eastern Canadian Shield taiga
+- Arctic foothills tundra
+- Kamchatka-Kurile meadows and sparse forests
+- Cherskii-Kolyma mountain tundra
+- Northern Cordillera forests
+- Northwest Territories taiga
+- Trans-Baikal Bald Mountain tundra
+- East Siberian taiga
+val_realistic:
+- Novosibirsk Islands Arctic desert
+- Canadian Low Arctic tundra
+- Interior Alaska-Yukon lowland taiga
+- Northeast Siberian coastal tundra
+- Beringia lowland tundra
+test_realistic:
+- Cook Inlet taiga
+- Northern Canadian Shield taiga
+- Northwest Russian-Novaya Zemlya tundra
+- West Siberian taiga
+val_balanced:
+- Novosibirsk Islands Arctic desert
+- Canadian Low Arctic tundra
+- Interior Alaska-Yukon lowland taiga
+- Northeast Siberian coastal tundra
+- Beringia lowland tundra

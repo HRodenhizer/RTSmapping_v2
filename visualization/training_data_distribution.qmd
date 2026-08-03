@@ -53,7 +53,7 @@ It should be noted that the RegionName in metadata.csv does not always correspon
 #   "gs://rts-mapping-v2/training/v1.0/metadata.csv"
 # ) # This causes R to crash, but is the correct source file.
 train_meta <- read.csv(
-  "./domain/data/training_v1.0_metadata.csv"
+  "./visualization/data/training_v1.0_metadata.csv"
 ) # read_csv causes R to crash
 ```
 
@@ -61,7 +61,7 @@ train_meta <- read.csv(
 
 ```{r}
 # Splits from "gs://rts-mapping-v2/training/v1.0/splits.yaml"
-splits <- yaml::read_yaml("./domain/data/training_v1.0_splits.yaml")
+splits <- yaml::read_yaml("./visualization/data/training_v1.0_splits.yaml")
 splits_df <- map2_df(
   splits[1:3],
   names(splits)[1:3],
@@ -208,7 +208,7 @@ neg_points <- train_points |>
 ```
 
 ```{r}
-# st_write(train_points, "./domain/train_points.geojson", delete_dsn = TRUE)
+# st_write(train_points, "./visualization/data/train_points.geojson", delete_dsn = TRUE)
 ```
 
 ## Create Hex Grid
