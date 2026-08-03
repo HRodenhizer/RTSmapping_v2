@@ -111,7 +111,7 @@ neg_points <- train_points |>
 ```
 
 ``` r
-# st_write(train_points, "./visualization/train_points.geojson", delete_dsn = TRUE)
+# st_write(train_points, "./visualization/data/train_points.geojson", delete_dsn = TRUE)
 ```
 
 ## Create Hex Grid
