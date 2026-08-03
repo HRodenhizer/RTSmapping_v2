@@ -384,15 +384,15 @@ train_hexplot <- ggplot(world_north) +
   geom_sf(
     data = long_lines,
     color = 'gray85',
-    linewidth = 0.25
+    linewidth = 0.1
   ) +
   geom_sf(
     data = lat_lines,
     color = 'gray85',
-    linewidth = 0.25
+    linewidth = 0.1
   ) +
   geom_sf(
-    color = 'transparent',
+    color = 'gray90',
     fill = 'gray90'
   ) +
   geom_sf(
@@ -512,6 +512,13 @@ train_hexplot
 ``` r
 ggsave(
   "./plots/training_data_map.png",
+  train_hexplot,
+  height = 6.5,
+  width = 6.5
+)
+
+ggsave(
+  "./plots/training_data_map.svg",
   train_hexplot,
   height = 6.5,
   width = 6.5
