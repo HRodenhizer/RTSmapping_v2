@@ -219,11 +219,18 @@ class_breaks <- c(0, 1, 100, 200)
 
 train_hex <- train_points |>
   st_make_grid(
-    cellsize = sqrt((100000 * 2) / (3 * sqrt(3))) * sqrt(3) * 1000, # get short side length of hexagon from area == 10000 km^2, and convert to m
+    cellsize = sqrt((100000 * 2) / (sqrt(3))) * 1000, # get short side length of hexagon from area == 10000 km^2, and convert to m
     square = FALSE
   ) |>
   st_as_sf() |>
-  rename(geometry = x) |>
+  rename(geometry = x)
+
+# st_write(
+#   train_hex,
+#   "./visualization/data/training_hex_grid.geojson",
+# )
+
+train_hex <- train_hex |>
   st_join(train_points, left = FALSE) |>
   summarize(
     Count = n(),
@@ -244,9 +251,14 @@ train_hex <- train_points |>
   ) |>
   ungroup() |>
   mutate(
-    Buffer = (sqrt((100000 * 2) / (3 * sqrt(3))) * sqrt(3) * 1000) /
-      2 *
-      (0.9 - sqrt(Count / max(Count)) * 0.9), # use this ratio to scale the hexagons by total count: hexagon short side length * percentile of total count
+    Buffer = (
+      sqrt((100000 * 2) / sqrt(3)) / 2 * 1000 # radius of a circle of size 10,000 km^2 in m
+    ) -
+      (
+        sqrt((100000 * (Count / max(Count) * 0.98 + 0.02) * 2) / sqrt(3)) /
+          2 *
+          1000 # radius of a circle of size (10,000 km^2 * count percentile) in m
+      ), # the difference in m between a full size hex and the scaled hex (to use as a buffer in next line)
     geometry_scaled = st_buffer(geometry, dist = Buffer * -1) # geometry of scaled hexagons
   )
 ```
@@ -407,9 +419,14 @@ hex_legend_data <- hex_legend_data |>
       (max(train_hex$Count) - 1) * 0.5 + 1,
       1
     ),
-    Buffer = (sqrt((100000 * 2) / (3 * sqrt(3))) * sqrt(3) * 1000) /
-      2 *
-      (0.9 - sqrt(Count / max(Count)) * 0.9), # use this ratio to scale the hexagons by total count: hexagon short side length * percentile of total count
+    Buffer = (
+      sqrt((100000 * 2) / sqrt(3)) / 2 * 1000 # radius of a circle of size 10,000 km^2 in m
+    ) -
+      (
+        sqrt((100000 * (Count / max(Count) * 0.98 + 0.02) * 2) / sqrt(3)) /
+          2 *
+          1000 # radius of a circle of size (10,000 km^2 * count percentile) in m
+      ), # the difference in m between a full size hex and the scaled hex (to use as a buffer in next line)
     geometry_scaled = st_buffer(geometry, dist = Buffer * -1) # geometry of scaled hexagons
   ) |>
   rowwise() |>
