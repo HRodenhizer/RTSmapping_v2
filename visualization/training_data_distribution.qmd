@@ -263,6 +263,11 @@ train_hex <- train_hex |>
   )
 ```
 
+
+```{r}
+# st_write(train_hex, "./visualization/data/train_hex.geojson", delete_dsn = TRUE)
+```
+
 ### Region Hex
 
 ```{r}
@@ -283,6 +288,11 @@ regions_hex <- train_hex |>
       levels = c("Training", "Validation", "Testing")
     )
   )
+```
+
+
+```{r}
+# st_write(regions_hex, "./visualization/data/train_regions_hex.geojson", delete_dsn = TRUE)
 ```
 
 ## Examples for Map Labels
