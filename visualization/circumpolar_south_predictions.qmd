@@ -13,7 +13,7 @@ library(googleCloudStorageR)
 library(sf)
 library(terra)
 library(tidyterra)
-library(arcgis)
+# library(arcgis)
 library(tidyverse)
 library(ggnewscale)
 # library(biscale)
@@ -22,7 +22,7 @@ library(patchwork)
 ```
 
 ```{r}
-token <- auth_code()
+# token <- auth_code()
 ```
 
 ```{r}
@@ -33,6 +33,16 @@ theme_set(theme_bw())
 
 # Define Functions
 
+## scientific_10
+
+```{r}
+scientific_10 = function(x) {
+  parse(text = gsub("e", " %*% 10^", scales::scientific_format()(x)))
+}
+```
+
+## classify_counts
+
 ```{r}
 classify_counts <- function(count_data, breaks) {
   new_count_data <- case_when(
@@ -41,6 +51,137 @@ classify_counts <- function(count_data, breaks) {
     count_data <= breaks[3] ~ 3,
     count_data <= breaks[4] ~ 4
   )
+}
+```
+
+## create_hex_legend
+
+```{r}
+create_hex_legend <- function(dataset, variable_name, n, breaks) {
+  hex_legend_data <- dataset |>
+    select(geometry) |>
+    slice(rep(1, n))
+  bounds <- st_bbox(hex_legend_data$geometry)
+  hex_legend_data <- hex_legend_data |>
+    mutate(
+      geometry = geometry - c(bounds$xmin, bounds$ymin),
+      count = seq(n, 1),
+      buffer = (
+        sqrt((100000 * 2) / sqrt(3)) / 2 * 1000 # radius of a circle of size 10,000 km^2 in m
+      ) -
+        (
+          sqrt(
+            (100000 *
+              ((count - 1) / (max(count) - 1) * 0.9 + 0.1) *
+              2) /
+              sqrt(3)
+          ) /
+            2 *
+            1000 # radius of a circle of size (10,000 km^2 * count percentile) in m
+        ), # the difference in m between a full size hex and the scaled hex (to use as a buffer in next line)
+      geometry_scaled = st_buffer(geometry, dist = buffer * -1) # geometry of scaled hexagons
+    ) |>
+    rowwise() |>
+    mutate(
+      geometry_scaled = geometry_scaled - c(0, st_bbox(geometry_scaled)$ymin)
+    ) |>
+    select(count, buffer, geometry, geometry_scaled)
+
+  # arrow <- tibble(
+  #   x = 0 - 100000,
+  #   y = 0 + 15000,
+  #   xend = 0 - 100000,
+  #   yend = st_bbox(hex_legend_data)["ymax"] - 100000
+  # )
+
+  labels <- tibble(
+    x = rep(-100000, 4),
+    xend = c(
+      st_bbox(hex_legend_data)["xmax"] -
+        (st_bbox(hex_legend_data)["xmax"] - st_bbox(hex_legend_data)["xmin"]) /
+          2,
+      NA,
+      NA,
+      st_bbox(hex_legend_data)["xmax"] -
+        (st_bbox(hex_legend_data)["xmax"] - st_bbox(hex_legend_data)["xmin"]) /
+          2
+    ),
+    y = seq(
+      st_bbox(hex_legend_data$geometry_scaled[[4]])["ymax"],
+      st_bbox(hex_legend_data)["ymax"],
+      length.out = 4
+    ),
+    breaks = breaks,
+    label = scientific_10(breaks)
+  )
+
+  size_legend <- ggplot() +
+    geom_sf(
+      data = hex_legend_data,
+      aes(
+        geometry = geometry_scaled,
+        fill = count
+      ),
+      color = "transparent",
+      # color = "gray10"
+    ) +
+    scale_fill_gradient(
+      low = red_min,
+      high = red_max,
+      trans = "log10"
+    ) +
+    # geom_segment(
+    #   data = arrow,
+    #   aes(
+    #     x = x,
+    #     y = y,
+    #     xend = xend,
+    #     yend = yend
+    #   ),
+    #   arrow = arrow(length = unit(3, "points"), angle = 45),
+    #   linewidth = 0.2
+    # ) +
+    geom_segment(
+      data = labels,
+      aes(
+        x = x,
+        y = y,
+        xend = xend,
+        yend = y
+      ),
+      linewidth = 0.2
+    ) +
+    geom_text(
+      data = labels,
+      aes(
+        x = x,
+        y = y,
+        label = label
+      ),
+      hjust = 1,
+      nudge_x = -50000,
+      size = 1.75
+    ) +
+    geom_text(
+      aes(
+        x = st_bbox(hex_legend_data)["xmax"] -
+          (st_bbox(hex_legend_data)["xmax"] -
+            st_bbox(hex_legend_data)["xmin"]) /
+            2,
+        y = max(labels$y) + 100000,
+        label = variable_name
+      ),
+      hjust = 0.5,
+      size = 1.75,
+      # angle = 90
+    ) +
+    coord_sf(clip = "off") +
+    theme_void() +
+    theme(
+      legend.position = "none"
+    )
+
+  return(size_legend)
 }
 ```
 
@@ -133,14 +274,14 @@ lat_lines <- seq(50, 90, by = 10) %>%
   map(~ lat_lines_from_coords(.x, lon_min = -180, lon_max = 180)) %>%
   bind_rows()
 
-world_ocean <- crop_bbox |>
-  st_as_sfc() |>
-  st_buffer(dist = 150000, joinStyle = "MITRE", mitreLimit = 150000) |>
-  st_transform(st_crs(world_north)) |>
-  st_difference(
-    world_north |>
-      st_union()
-  )
+# world_ocean <- crop_bbox |>
+#   st_as_sfc() |>
+#   st_buffer(dist = 150000, joinStyle = "MITRE", mitreLimit = 150000) |>
+#   st_transform(st_crs(world_north)) |>
+#   st_difference(
+#     world_north |>
+#       st_union()
+#   )
 ```
 
 ## Cities
@@ -154,26 +295,33 @@ cities <- st_read("../../../external_datasets/cities/cities.shp") |>
   )
 ```
 
+```{r}
+# st_write(
+#   cities,
+#   "./visualization/data/arctic_cities.geojson"
+# )
+```
+
 ## Esri Multi-direction Hillshade
 
 ```{r}
-hillshd_srvr <- arc_open(
-  "https://elevation.arcgis.com/arcgis/rest/services/WorldElevation/Terrain/ImageServer",
-  token = token
-)
+# hillshd_srvr <- arc_open(
+#   "https://elevation.arcgis.com/arcgis/rest/services/WorldElevation/Terrain/ImageServer",
+#   token = token
+# )
 
-hillshd <- arc_raster(
-  hillshd_srvr,
-  xmin = -180,
-  xmax = 180,
-  ymin = 43.9,
-  ymax = 90,
-  crs = 4326,
-  token = token
-)
+# hillshd <- arc_raster(
+#   hillshd_srvr,
+#   xmin = -180,
+#   xmax = 180,
+#   ymin = 43.9,
+#   ymax = 90,
+#   crs = 4326,
+#   token = token
+# )
 
-# hillshd = hillshd |>
-#   crop(ext(vect(crop_poly)))
+# # hillshd = hillshd |>
+# #   crop(ext(vect(crop_poly)))
 ```
 
 ## Permafrost
@@ -205,6 +353,19 @@ rts_pts_high <- rts_pts |>
   filter(conf_class == "high")
 ```
 
+
+```{r}
+# st_write(
+#   rts_pts,
+#   "./visualization/data/rts_centroids_2025.geojson"
+# )
+
+# st_write(
+#   rts_pts_high,
+#   "./visualization/data/rts_centroids_high_conf_2025.geojson"
+# )
+```
+
 ## Create Hex Grid
 
 ```{r}
@@ -230,15 +391,20 @@ ggplot(data = rts_hex) +
   scale_x_continuous(trans = "log10")
 
 quantile(rts_hex$rts_count)
-nat_count_breaks <- rgeoda::natural_breaks(4, rts_hex["rts_count"])
+count_breaks <- rgeoda::natural_breaks(4, rts_hex["rts_count"])
 count_breaks <- c(
   30,
-  plyr::round_any(nat_count_breaks[1:2], 50),
-  nat_count_breaks[3]
+  plyr::round_any(count_breaks[1:2], 50),
+  count_breaks[3]
 )
 
 quantile(rts_hex$rts_area)
-area_breaks <- rgeoda::natural_breaks(5, rts_hex["rts_area"])
+area_breaks <- rgeoda::natural_breaks(4, rts_hex["rts_area"])
+area_breaks <- c(
+  100000,
+  plyr::round_any(area_breaks[1:2], 100000),
+  area_breaks[3]
+)
 ```
 
 ```{r}
@@ -252,7 +418,7 @@ rts_hex <- rts_hex |>
       (
         sqrt(
           (100000 *
-            ((rts_count_class - 1) / (max(rts_count_class) - 1) * 0.9 + 0.1) * # apply a log10 transformation
+            ((rts_count_class - 1) / (max(rts_count_class) - 1) * 0.9 + 0.1) *
             2) /
             sqrt(3)
         ) /
@@ -266,7 +432,7 @@ rts_hex <- rts_hex |>
       (
         sqrt(
           (100000 *
-            ((rts_area_class - 1) / (max(rts_area_class) - 1) * 0.9 + 0.1) * # apply a log10 transformation
+            ((rts_area_class - 1) / (max(rts_area_class) - 1) * 0.9 + 0.1) *
             2) /
             sqrt(3)
         ) /
@@ -305,6 +471,13 @@ rts_hex <- rts_hex |>
   )
 ```
 
+```{r}
+# st_write(
+#   rts_hex,
+#   "./visualization/data/rts_hex_2025.geojson"
+# )
+```
+
 ## Region Hex
 
 ```{r}
@@ -313,6 +486,14 @@ region_hex <- hex_grid |>
   summarise(
     geometry = st_union(geometry)
   )
+```
+
+
+```{r}
+# st_write(
+#   region_hex,
+#   "./visualization/data/inference_region_hex_2025.geojson"
+# )
 ```
 
 # Prep First Zoom Inset
@@ -342,17 +523,22 @@ example_world <- world_north |>
 ## Prepare Elevation/Permafrost Blend
 
 ```{r}
-blend_overlay <- function(a, b) {
-  case_when(
-    a < 0.5 ~ 2 * a * b,
-    is.na(b) ~ a,
-    TRUE ~ (1 - 2 * (1 - a) * (1 - b))
-  )
-}
+# blend_overlay <- function(a, b) {
+#   case_when(
+#     a < 0.5 ~ 2 * a * b,
+#     is.na(b) ~ a,
+#     TRUE ~ (1 - 2 * (1 - a) * (1 - b))
+#   )
+# }
 
-elev_perm_overlay <- c(hillshd, project(permafrost, hillshd))
-names(elev_perm_overlay) <- c("hillshd", "perm_prob")
-elev_perm_overlay["blend"] <- lapp(elev_perm_overlay[[1:2]], blend_overlay)
+# elev_perm_overlay <- c(
+#   hillshd,
+#   permafrost |>
+#     project(hillshd) |>
+#     app(fun = function(x) x / 100)
+# )
+# names(elev_perm_overlay) <- c("hillshd", "perm_prob")
+# elev_perm_overlay[["blend"]] <- lapp(elev_perm_overlay[[1:2]], blend_overlay)
 ```
 
 ## Colors
@@ -363,6 +549,338 @@ reds_10 <- reds(10)
 red_min <- reds_10[2]
 red_max <- reds_10[10]
 ```
+
+## Hex Legend Location
+
+```{r}
+size_legend_location <- c(
+  left = 0.87,
+  bottom = 0.01,
+  right = 0.97,
+  top = 0.12
+)
+```
+
+## RTS Count Map
+
+```{r}
+#| fig-width: 6.5
+#| fig-height: 6.5
+rts_count_hexplot <- ggplot(world_north) +
+  # Background (ocean, lon, lat, land)
+  geom_sf(
+    data = long_lines,
+    color = 'gray85',
+    linewidth = 0.1
+  ) +
+  geom_sf(
+    data = lat_lines,
+    color = 'gray85',
+    linewidth = 0.1
+  ) +
+  geom_sf(
+    color = 'gray85',
+    fill = 'gray85'
+  ) +
+
+  # # Permafrost
+  geom_spatraster(
+    data = permafrost,
+    aes(fill = NIEER_Probability),
+    # maxcell = 10e+06,
+    # alpha = 0.75
+  ) +
+  scale_fill_gradient(
+    low = "#d8ebfd",
+    high = "#88BBEE",
+    na.value = "transparent"
+  ) +
+  new_scale_fill() +
+
+  # Cities
+  geom_sf(
+    data = cities,
+    shape = 21,
+    color = "black",
+    fill = "white",
+    size = 2
+  ) +
+  geom_sf(
+    data = cities,
+    color = "black",
+    size = 0.5
+  ) +
+  geom_sf_text(
+    data = cities,
+    aes(label = CITY_NAME),
+    hjust = 1,
+    position = position_nudge(x = -150000),
+    color = "black",
+    size = 2
+  ) +
+
+  # Country borders
+  geom_sf(
+    color = 'white',
+    fill = 'transparent',
+    linewidth = 0.1
+  ) +
+
+  # RTS Hex
+  geom_sf(
+    data = rts_hex,
+    aes(geometry = geometry_count_scaled, fill = rts_count_class),
+    color = "transparent",
+    # color = "gray10",
+    alpha = 0.8
+  ) +
+  scale_fill_gradient(
+    name = "RTS Count",
+    low = red_min,
+    high = red_max
+  ) +
+
+  # RTS Hex Outlines
+  geom_sf(
+    data = rts_hex,
+    aes(geometry = geometry),
+    fill = "transparent",
+    color = "gray95",
+    linewidth = 0.3
+  ) +
+
+  # Inference Region
+  geom_sf(
+    data = region_hex,
+    color = "black",
+    fill = "transparent",
+    linewidth = 0.3
+  ) +
+
+  # Manual Circular Plot Border
+  geom_sf(
+    data = crop_poly,
+    color = 'black',
+    fill = 'transparent',
+    linewidth = 0.25
+  ) +
+
+  # Aesthetic Options
+  scale_x_continuous(expand = expansion(mult = c(0.01, 0.01))) +
+  scale_y_continuous(expand = expansion(mult = c(0.01, 0.01))) +
+  coord_sf(
+    xlim = c(crop_bbox["xmin"], crop_bbox["xmax"]),
+    ylim = c(crop_bbox["ymin"], crop_bbox["ymax"])
+  ) +
+  theme_void() +
+  theme(
+    # legend.text = element_text(size = 5, margin = margin(0, 3, 0, 0)),
+    # legend.text.position = "left",
+    # legend.position = "inside",
+    # legend.position.inside = c(1, 0.17),
+    # legend.justification = c(1, 0),
+    # legend.key.size = unit(13, "points"),
+    # legend.key.spacing.x = unit(0, "points")
+    legend.position = "none"
+  )
+
+rts_count_hexplot <- rts_count_hexplot +
+  inset_element(
+    create_hex_legend(rts_hex, "Total Count", 4, count_breaks),
+    left = size_legend_location["left"],
+    bottom = size_legend_location["bottom"],
+    right = size_legend_location["right"],
+    top = size_legend_location["top"]
+  )
+rts_count_hexplot
+```
+
+```{r}
+# ggsave(
+#   "./plots/rts_count_map.png",
+#   rts_count_hexplot,
+#   height = 6.5,
+#   width = 6.5
+# )
+
+# ggsave(
+#   "./plots/rts_count_map.svg",
+#   rts_count_hexplot,
+#   height = 6.5,
+#   width = 6.5
+# )
+```
+
+## 1 Hex Zoom
+
+```{r}
+ggplot(
+  example_world
+) +
+  geom_sf(
+    color = 'gray85',
+    fill = 'gray85'
+  ) +
+  geom_sf(data = example_rts) +
+  geom_sf(data = example_hex, fill = "transparent", linewidth = 0.5) +
+
+  # Aesthetic Options
+  scale_x_continuous(expand = expansion(mult = c(0, 0))) +
+  scale_y_continuous(expand = expansion(mult = c(0, 0.05)))
+```
+
+
+
+## RTS Area Map
+
+```{r}
+#| fig-width: 6.5
+#| fig-height: 6.5
+rts_area_hexplot <- ggplot(world_north) +
+  # Background (ocean, lon, lat, land)
+  geom_sf(
+    data = long_lines,
+    color = 'gray85',
+    linewidth = 0.1
+  ) +
+  geom_sf(
+    data = lat_lines,
+    color = 'gray85',
+    linewidth = 0.1
+  ) +
+  geom_sf(
+    color = 'gray85',
+    fill = 'gray85'
+  ) +
+
+  # # Permafrost
+  geom_spatraster(
+    data = permafrost,
+    aes(fill = NIEER_Probability),
+    # maxcell = 10e+06,
+    # alpha = 0.75
+  ) +
+  scale_fill_gradient(
+    low = "#d8ebfd",
+    high = "#88BBEE",
+    na.value = "transparent"
+  ) +
+  new_scale_fill() +
+
+  # Cities
+  geom_sf(
+    data = cities,
+    shape = 21,
+    color = "black",
+    fill = "white",
+    size = 2
+  ) +
+  geom_sf(
+    data = cities,
+    color = "black",
+    size = 0.5
+  ) +
+  geom_sf_text(
+    data = cities,
+    aes(label = CITY_NAME),
+    hjust = 1,
+    position = position_nudge(x = -150000),
+    color = "black",
+    size = 2
+  ) +
+
+  # areary borders
+  geom_sf(
+    color = 'white',
+    fill = 'transparent',
+    linewidth = 0.1
+  ) +
+
+  # RTS Hex
+  geom_sf(
+    data = rts_hex,
+    aes(geometry = geometry_area_scaled, fill = rts_area_class),
+    color = "transparent",
+    # color = "gray10",
+    alpha = 0.8
+  ) +
+  scale_fill_gradient(
+    name = "RTS Area",
+    low = red_min,
+    high = red_max
+  ) +
+
+  # RTS Hex Outlines
+  geom_sf(
+    data = rts_hex,
+    aes(geometry = geometry),
+    fill = "transparent",
+    color = "gray95",
+    linewidth = 0.3
+  ) +
+
+  # Inference Region
+  geom_sf(
+    data = region_hex,
+    color = "black",
+    fill = "transparent",
+    linewidth = 0.3
+  ) +
+
+  # Manual Circular Plot Border
+  geom_sf(
+    data = crop_poly,
+    color = 'black',
+    fill = 'transparent',
+    linewidth = 0.25
+  ) +
+
+  # Aesthetic Options
+  scale_x_continuous(expand = expansion(mult = c(0.01, 0.01))) +
+  scale_y_continuous(expand = expansion(mult = c(0.01, 0.01))) +
+  coord_sf(
+    xlim = c(crop_bbox["xmin"], crop_bbox["xmax"]),
+    ylim = c(crop_bbox["ymin"], crop_bbox["ymax"])
+  ) +
+  theme_void() +
+  theme(
+    # legend.text = element_text(size = 5, margin = margin(0, 3, 0, 0)),
+    # legend.text.position = "left",
+    # legend.position = "inside",
+    # legend.position.inside = c(1, 0.17),
+    # legend.justification = c(1, 0),
+    # legend.key.size = unit(13, "points"),
+    # legend.key.spacing.x = unit(0, "points")
+    legend.position = "none"
+  )
+
+rts_area_hexplot <- rts_area_hexplot +
+  inset_element(
+    create_hex_legend(rts_hex, "Total Area", 4, area_breaks),
+    left = size_legend_location["left"],
+    bottom = size_legend_location["bottom"],
+    right = size_legend_location["right"],
+    top = size_legend_location["top"]
+  )
+rts_area_hexplot
+```
+
+```{r}
+# ggsave(
+#   "./plots/rts_area_map.png",
+#   rts_area_hexplot,
+#   height = 6.5,
+#   width = 6.5
+# )
+
+# ggsave(
+#   "./plots/rts_area_map.svg",
+#   rts_area_hexplot,
+#   height = 6.5,
+#   width = 6.5
+# )
+```
+
 
 ## All Centroids
 
@@ -445,414 +963,4 @@ ggplot(world_north) +
 ```
 
 ## Circumpolar Hex
-
-### Size Legend
-
-```{r}
-hex_legend_data <- rts_hex |>
-  slice(rep(1, 4))
-bounds <- st_bbox(hex_legend_data$geometry)
-hex_legend_data <- hex_legend_data |>
-  mutate(
-    geometry = geometry - c(bounds$xmin, bounds$ymin),
-    count = c(
-      4,
-      3,
-      2,
-      1
-    ),
-    buffer = (
-      sqrt((100000 * 2) / sqrt(3)) / 2 * 1000 # radius of a circle of size 10,000 km^2 in m
-    ) -
-      (
-        sqrt(
-          (100000 *
-            ((count - 1) / (max(count) - 1) * 0.9 + 0.1) *
-            2) /
-            sqrt(3)
-        ) /
-          2 *
-          1000 # radius of a circle of size (10,000 km^2 * count percentile) in m
-      ), # the difference in m between a full size hex and the scaled hex (to use as a buffer in next line)
-    geometry_scaled = st_buffer(geometry, dist = buffer * -1) # geometry of scaled hexagons
-  ) |>
-  rowwise() |>
-  mutate(
-    geometry_scaled = geometry_scaled - c(0, st_bbox(geometry_scaled)$ymin)
-  ) |>
-  select(count, buffer, geometry, geometry_scaled)
-
-arrow <- tibble(
-  x = 0 - 100000,
-  y = 0 + 15000,
-  xend = 0 - 100000,
-  yend = st_bbox(hex_legend_data)["ymax"] - 100000
-)
-
-labels <- tibble(
-  x = rep(-100000, 4),
-  xend = c(
-    st_bbox(hex_legend_data)["xmax"] -
-      (st_bbox(hex_legend_data)["xmax"] - st_bbox(hex_legend_data)["xmin"]) / 2,
-    NA,
-    NA,
-    st_bbox(hex_legend_data)["xmax"] -
-      (st_bbox(hex_legend_data)["xmax"] - st_bbox(hex_legend_data)["xmin"]) / 2
-  ),
-  y = seq(
-    st_bbox(hex_legend_data$geometry_scaled[[4]])["ymax"],
-    st_bbox(hex_legend_data)["ymax"],
-    length.out = 4
-  ),
-  breaks = c(count_breaks),
-  label = paste0("<=", count_breaks)
-)
-
-size_legend <- ggplot() +
-  geom_sf(
-    data = hex_legend_data,
-    aes(
-      geometry = geometry_scaled,
-      fill = count
-    ),
-    color = "transparent"
-  ) +
-  scale_fill_gradient(
-    low = red_min,
-    high = red_max,
-    trans = "log10"
-  ) +
-  # geom_segment(
-  #   data = arrow,
-  #   aes(
-  #     x = x,
-  #     y = y,
-  #     xend = xend,
-  #     yend = yend
-  #   ),
-  #   arrow = arrow(length = unit(3, "points"), angle = 45),
-  #   linewidth = 0.2
-  # ) +
-  geom_segment(
-    data = labels,
-    aes(
-      x = x,
-      y = y,
-      xend = xend,
-      yend = y
-    ),
-    linewidth = 0.2
-  ) +
-  geom_text(
-    data = labels,
-    aes(
-      x = x,
-      y = y,
-      label = label
-    ),
-    hjust = 1,
-    nudge_x = -50000,
-    size = 1.75
-  ) +
-  geom_text(
-    aes(
-      x = st_bbox(hex_legend_data)["xmax"] -
-        (st_bbox(hex_legend_data)["xmax"] - st_bbox(hex_legend_data)["xmin"]) /
-          2,
-      y = max(labels$y) + 100000,
-      label = "Total Count"
-    ),
-    hjust = 0.5,
-    size = 1.75,
-    # angle = 90
-  ) +
-  coord_sf(clip = "off") +
-  theme_void() +
-  theme(
-    legend.position = "none"
-  )
-# size_legend
-```
-
-### RTS Count Map
-
-```{r}
-#| fig-width: 6.5
-#| fig-height: 6.5
-rts_count_hexplot <- ggplot(world_north) +
-  # Background (ocean, lon, lat, land)
-  geom_sf(
-    data = long_lines,
-    color = 'gray85',
-    linewidth = 0.1
-  ) +
-  geom_sf(
-    data = lat_lines,
-    color = 'gray85',
-    linewidth = 0.1
-  ) +
-  geom_sf(
-    color = 'gray85',
-    fill = 'gray85'
-  ) +
-  geom_spatraster(data = hillshd) +
-  scale_fill_gradient(
-    low = "#CCCCCC",
-    high = "#FFFFFF",
-    na.value = "transparent"
-  ) +
-  new_scale_fill() +
-  geom_sf(
-    data = world_ocean,
-    fill = "white",
-    color = "transparent"
-  ) +
-
-  # Permafrost
-  geom_spatraster(
-    data = permafrost,
-    aes(fill = NIEER_Probability),
-    # maxcell = 10e+06,
-    alpha = 0.75
-  ) +
-  scale_fill_gradient(
-    low = "#d8ebfd",
-    high = "#88BBEE",
-    na.value = "transparent"
-  ) +
-  new_scale_fill() +
-
-  # Cities
-  geom_sf(
-    data = cities,
-    shape = 21,
-    color = "black",
-    fill = "white",
-    size = 2
-  ) +
-  geom_sf(
-    data = cities,
-    color = "black",
-    size = 0.5
-  ) +
-  geom_sf_text(
-    data = cities,
-    aes(label = CITY_NAME),
-    hjust = 1,
-    position = position_nudge(x = -150000),
-    color = "black",
-    size = 2
-  ) +
-
-  # Country borders
-  geom_sf(
-    color = 'white',
-    fill = 'transparent',
-    linewidth = 0.1
-  ) +
-
-  # RTS Hex
-  geom_sf(
-    data = rts_hex,
-    aes(geometry = geometry_count_scaled, fill = rts_count_class),
-    color = "gray10",
-    alpha = 0.8
-  ) +
-  scale_fill_gradient(
-    name = "RTS Count",
-    low = red_min,
-    high = red_max,
-    trans = "log10"
-  ) +
-
-  # # RTS Hex Outlines
-  # geom_sf(
-  #   data = rts_hex,
-  #   aes(geometry = geometry),
-  #   fill = "transparent",
-  #   color = "gray95",
-  #   linewidth = 0.3
-  # ) +
-
-  # Inference Region
-  geom_sf(
-    data = region_hex,
-    color = "black",
-    fill = "transparent",
-    linewidth = 0.3
-  ) +
-
-  # Manual Circular Plot Border
-  geom_sf(
-    data = crop_poly,
-    color = 'black',
-    fill = 'transparent',
-    linewidth = 0.25
-  ) +
-
-  # Aesthetic Options
-  scale_x_continuous(expand = expansion(mult = c(0.01, 0.01))) +
-  scale_y_continuous(expand = expansion(mult = c(0.01, 0.01))) +
-  coord_sf(
-    xlim = c(crop_bbox["xmin"], crop_bbox["xmax"]),
-    ylim = c(crop_bbox["ymin"], crop_bbox["ymax"])
-  ) +
-  theme_void() +
-  theme(
-    # legend.text = element_text(size = 5, margin = margin(0, 3, 0, 0)),
-    # legend.text.position = "left",
-    # legend.position = "inside",
-    # legend.position.inside = c(1, 0.17),
-    # legend.justification = c(1, 0),
-    # legend.key.size = unit(13, "points"),
-    # legend.key.spacing.x = unit(0, "points")
-    legend.position = "none"
-  )
-
-size_legend_location <- c(
-  left = 0.75,
-  bottom = 0.1,
-  right = 0.85,
-  top = 0.21
-)
-
-rts_count_hexplot <- rts_count_hexplot +
-  inset_element(
-    size_legend,
-    left = size_legend_location["left"],
-    bottom = size_legend_location["bottom"],
-    right = size_legend_location["right"],
-    top = size_legend_location["top"]
-  )
-rts_count_hexplot
-```
-
-```{r}
-ggsave(
-  "./plots/rts_count_map.png",
-  rts_count_hexplot,
-  height = 6.5,
-  width = 6.5
-)
-
-ggsave(
-  "./plots/rts_count_map.svg",
-  rts_count_hexplot,
-  height = 6.5,
-  width = 6.5
-)
-```
-
-## 1 Hex Zoom
-
-```{r}
-ggplot(
- example_world
-) +
-  geom_sf(
-    color = 'gray85',
-    fill = 'gray85'
-  ) +
-  geom_sf(data = example_rts) +
-  geom_sf(data = example_hex, fill = "transparent", linewidth = 0.5) +
-
-  # Aesthetic Options
-  scale_x_continuous(expand = expansion(mult = c(0, 0))) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.05)))
-```
-
-
-
-### RTS Area Map
-
-```{r}
-#| fig-width: 6.5
-#| fig-height: 6.5
-rts_count_hexplot <- ggplot(world_north) +
-  geom_sf(
-    data = long_lines,
-    color = 'gray85',
-    linewidth = 0.1
-  ) +
-  geom_sf(
-    data = lat_lines,
-    color = 'gray85',
-    linewidth = 0.1
-  ) +
-  geom_sf(
-    color = 'gray90',
-    fill = 'gray90'
-  ) +
-  geom_sf(
-    data = rts_hex,
-    aes(geometry = geometry_count_scaled, fill = rts_area),
-    color = "transparent",
-    alpha = 1
-  ) +
-  geom_sf(
-    data = rts_hex,
-    aes(geometry = geometry),
-    fill = "transparent",
-    color = "gray95",
-    linewidth = 0.5
-  ) +
-  scale_fill_gradient(
-    name = "RTS Area",
-    low = red_min,
-    high = red_max,
-    trans = "log10"
-  ) +
-  geom_sf(
-    data = crop_poly,
-    color = 'black',
-    fill = 'transparent',
-    linewidth = 0.25
-  ) +
-  scale_x_continuous(expand = expansion(mult = c(0.01, 0.01))) +
-  scale_y_continuous(expand = expansion(mult = c(0.01, 0.01))) +
-  coord_sf() +
-  theme_void() +
-  theme(
-    legend.text = element_text(size = 10, margin = margin(0, 3, 0, 0)),
-    legend.text.position = "left",
-    legend.position = "inside",
-    legend.position.inside = c(1, 0.17),
-    legend.justification = c(1, 0),
-    legend.key.size = unit(13, "points"),
-    legend.key.spacing.x = unit(0, "points")
-  )
-
-size_legend_location <- c(
-  left = 0.75,
-  bottom = 0.019,
-  right = 0.8,
-  top = 0.074
-)
-
-rts_count_hexplot <- rts_count_hexplot +
-  inset_element(
-    size_legend,
-    left = size_legend_location["left"],
-    bottom = size_legend_location["bottom"],
-    right = size_legend_location["right"],
-    top = size_legend_location["top"]
-  )
-rts_count_hexplot
-```
-
-```{r}
-ggsave(
-  "./plots/rts_area_map.png",
-  rts_area_hexplot,
-  height = 6.5,
-  width = 6.5
-)
-
-ggsave(
-  "./plots/rts_area_map.svg",
-  rts_area_hexplot,
-  height = 6.5,
-  width = 6.5
-)
-```
 
