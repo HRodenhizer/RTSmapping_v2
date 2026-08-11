@@ -131,8 +131,10 @@ cython_debug/
 #.idea/
 /.quarto/
 **/*.quarto_ipynb
-# Domain Data Files (too big)
+
+# Data Files (too big)
 /domain/data
+/visualization/data
 
 googlecloudstorager-auth-key.json
 
