@@ -563,16 +563,34 @@ alaska <- us |>
     crs = st_crs(world_north)
   ))
 
-ak_rts <- rts_pts_high |>
-  st_join(alaska, join = st_within, left = FALSE)
+ak_rts <- rts_pts |>
+  st_join(alaska, join = st_within, left = FALSE) |>
+  mutate(
+    conf_class = factor(
+      conf_class,
+      levels = c("low", "medium", "high")
+    )
+  )
 
 ggplot(alaska) +
   geom_sf() +
-  geom_sf(data = ak_rts)
+  geom_sf(
+    data = ak_rts,
+    aes(color = conf_class)
+  ) +
+  scale_color_manual(
+    values = c("gray80", "gray50", "black")
+  ) +
+  coord_sf(crs = 6396) # AK State Plane Zone 3
 
-ggsave("./plots/ak_rts_pts.png")
+# ggsave("./plots/circumpolar_mapsak_rts_pts.png")
 
-nrow(ak_rts)
+ak_rts |>
+  st_drop_geometry() |>
+  summarise(
+    count = n(),
+    .by = conf_class
+  )
 ```
 
 ## Create Hex Grid
