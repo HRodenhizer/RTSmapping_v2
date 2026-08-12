@@ -37,7 +37,16 @@ theme_set(theme_bw())
 
 ```{r}
 scientific_10 <- function(x) {
-  parse(text = gsub("e(\\+?)", " %*% 10^", scales::scientific_format()(x)))
+  parse(
+    text = paste(
+      "'<='*",
+      str_replace(
+        scales::scientific_format()(x),
+        "e(\\+?)(0?)",
+        " %*% 10^"
+      )
+    )
+  )
 }
 ```
 
@@ -80,7 +89,7 @@ calculate_buffer <- function(column, min_area = 0.05) {
 ## create_hex_legend
 
 ```{r}
-create_hex_legend <- function(dataset, variable_name, n, breaks) {
+create_hex_legend <- function(dataset, variable_name, n, breaks, colors) {
   hex_legend_data <- dataset |>
     select(geometry) |>
     slice(rep(1, n))
@@ -104,6 +113,13 @@ create_hex_legend <- function(dataset, variable_name, n, breaks) {
   #   yend = st_bbox(hex_legend_data)["ymax"] - 100000
   # )
 
+  # Format breaks to use scientific notation if they are large
+  if (all(breaks >= 1000)) {
+    breaks <- scientific_10(breaks)
+  } else {
+    breaks <- paste("<= ", breaks)
+  }
+
   labels <- tibble(
     x = rep(-20000, 4),
     xend = c(
@@ -121,8 +137,7 @@ create_hex_legend <- function(dataset, variable_name, n, breaks) {
       st_bbox(hex_legend_data)["ymax"],
       length.out = 4
     ),
-    breaks = breaks,
-    label = scientific_10(breaks)
+    label = breaks
   )
 
   size_legend <- ggplot() +
@@ -130,15 +145,13 @@ create_hex_legend <- function(dataset, variable_name, n, breaks) {
       data = hex_legend_data,
       aes(
         geometry = geometry_scaled,
-        fill = count
+        fill = factor(count)
       ),
       color = "transparent",
       # color = "gray10"
     ) +
-    scale_fill_gradient(
-      low = red_min,
-      high = red_max,
-      trans = "log10"
+    scale_fill_manual(
+      values = colors
     ) +
     # geom_segment(
     #   data = arrow,
@@ -170,24 +183,19 @@ create_hex_legend <- function(dataset, variable_name, n, breaks) {
       ),
       hjust = 1,
       nudge_x = -20000,
-      size = 2
+      size = 3
     ) +
-    geom_text(
-      aes(
-        x = st_bbox(hex_legend_data)["xmax"] -
-          (st_bbox(hex_legend_data)["xmax"] -
-            st_bbox(hex_legend_data)["xmin"]) /
-            2,
-        y = max(labels$y) + 100000,
-        label = variable_name
-      ),
-      hjust = 0.5,
-      size = 2.5,
-      # angle = 90
+    labs(
+      title = variable_name
     ) +
     coord_sf(clip = "off") +
     theme_void() +
     theme(
+      plot.title = element_text(
+        size = 12,
+        hjust = 0.5
+      ),
+      plot.margin = margin(3, 3, 3, 40, unit = "pt"),
       legend.position = "none"
     )
 
@@ -202,7 +210,8 @@ plot_hex_grid <- function(
   hex_data,
   geometry_col,
   geometry_col_scaled,
-  fill_col
+  fill_col,
+  colors
 ) {
   ggplot(world_north) +
     # Background (lon, lat, land)
@@ -257,7 +266,7 @@ plot_hex_grid <- function(
       size = 2
     ) +
 
-    # areary borders
+    # hex borders
     geom_sf(
       color = 'white',
       fill = 'transparent',
@@ -267,15 +276,14 @@ plot_hex_grid <- function(
     # RTS Hex
     geom_sf(
       data = hex_data,
-      aes(geometry = {{ geometry_col_scaled }}, fill = {{ fill_col }}),
+      aes(geometry = {{ geometry_col_scaled }}, fill = factor({{ fill_col }})),
       color = "transparent",
       # color = "gray10",
       alpha = 0.8
     ) +
-    scale_fill_gradient(
+    scale_fill_manual(
       name = "RTS Area",
-      low = red_min,
-      high = red_max
+      values = colors
     ) +
 
     # RTS Hex Outlines
@@ -548,6 +556,15 @@ ggplot(data = rts_pts_high) +
       fill = "High Confidence"
     )
   )
+
+ggplot(data = rts_pts_high) +
+  geom_point(
+    aes(
+      x = mean_prob,
+      y = max_prob
+    ),
+    alpha = 0.2
+  )
 ```
 
 Count of RTS in AK
@@ -662,6 +679,19 @@ max_prob_breaks <- c(
   plyr::round_any(max_prob_breaks[1:3], 0.01),
   max(rts_hex$max_prob)
 )
+
+# breaks = tibble(
+#   total_count_breaks = total_count_breaks,
+#   total_area_breaks = total_area_breaks,
+#   median_area_breaks = median_area_breaks,
+#   mean_prob_breaks = mean_prob_breaks,
+#   max_prob_breaks = max_prob_breaks
+# )
+
+# write_csv(
+#   breaks,
+#   "./visualization/data/mapping_bing_breaks.csv"
+# )
 ```
 
 ```{r}
@@ -772,13 +802,41 @@ reds <- colorRampPalette(c("#FFFFFF", "#AE3A4E"))
 reds_10 <- reds(10)
 red_min <- reds_10[2]
 red_max <- reds_10[10]
+yellow_reds <- colorRampPalette(c("#fff7aa", "#ff6600", "#800000"))
+yellow_red_palettes <- list(
+  yellow_red_3 = yellow_reds(3),
+  yellow_red_4 = yellow_reds(4),
+  yellow_red_5 = yellow_reds(5),
+  yellow_red_6 = yellow_reds(6),
+  yellow_red_7 = yellow_reds(7),
+  yellow_red_8 = yellow_reds(8),
+  yellow_red_9 = yellow_reds(9),
+  yellow_red_10 = yellow_reds(10)
+)
+# "#FFF7AA"
+# "#FF9638"
+# "#D44400"
+# "#800000"
+# write_csv(
+#   tibble(
+#     yellow_red_3 = c(yellow_reds(3), rep(NA, 7)),
+#     yellow_red_4 = c(yellow_reds(4), rep(NA, 6)),
+#     yellow_red_5 = c(yellow_reds(5), rep(NA, 5)),
+#     yellow_red_6 = c(yellow_reds(6), rep(NA, 4)),
+#     yellow_red_7 = c(yellow_reds(7), rep(NA, 3)),
+#     yellow_red_8 = c(yellow_reds(8), rep(NA, 2)),
+#     yellow_red_9 = c(yellow_reds(9), rep(NA, 1)),
+#     yellow_red_10 = yellow_reds(10)
+#   ),
+#   "./visualization/data/color_ramps.csv"
+# )
 ```
 
 ## Hex Legend Location
 
 ```{r}
 size_legend_location <- c(
-  left = 0.87,
+  left = 0.77,
   bottom = 0.01,
   right = 0.97,
   top = 0.12
@@ -794,14 +852,16 @@ total_count_hexplot <- plot_hex_grid(
   rts_hex,
   geometry,
   geometry_scaled_total_count,
-  total_count_class
+  total_count_class,
+  yellow_red_palettes[[2]]
 )
 
 total_count_legend <- create_hex_legend(
   rts_hex,
   "Total Count",
   4,
-  total_count_breaks
+  total_count_breaks,
+  yellow_red_palettes[[2]]
 )
 
 total_count_hexplot <- total_count_hexplot +
@@ -817,21 +877,21 @@ total_count_hexplot
 
 ```{r}
 # ggsave(
-#   "./plots/total_count_legend.svg",
+#   "./plots/circumpolar_maps/legends/total_count_legend.svg",
 #   total_count_legend,
-#   height = 3,
-#   width = 2.8
+#   height = 1.5,
+#   width = 1.8
 # )
 
 # ggsave(
-#   "./plots/rts_total_count_map.png",
+#   "./plots/circumpolar_maps/rts_total_count_map.png",
 #   total_count_hexplot,
 #   height = 6.5,
 #   width = 6.5
 # )
 
 # ggsave(
-#   "./plots/rts_total_count_map.svg",
+#   "./plots/circumpolar_maps/rts_total_count_map.svg",
 #   total_count_hexplot,
 #   height = 6.5,
 #   width = 6.5
@@ -865,12 +925,21 @@ total_area_hexplot <- plot_hex_grid(
   rts_hex,
   geometry,
   geometry_scaled_total_area,
-  total_area_class
+  total_area_class,
+  yellow_red_palettes[[2]]
+)
+
+total_area_legend <- create_hex_legend(
+  rts_hex,
+  "Total Area",
+  4,
+  total_area_breaks,
+  yellow_red_palettes[[2]]
 )
 
 total_area_hexplot <- total_area_hexplot +
   inset_element(
-    create_hex_legend(rts_hex, "Total Area", 4, total_area_breaks),
+    total_area_legend,
     left = size_legend_location["left"],
     bottom = size_legend_location["bottom"],
     right = size_legend_location["right"],
@@ -881,14 +950,21 @@ total_area_hexplot
 
 ```{r}
 # ggsave(
-#   "./plots/rts_total_area_map.png",
+#   "./plots/circumpolar_maps/legends/total_area_legend.svg",
+#   total_area_legend,
+#   height = 1.5,
+#   width = 2
+# )
+
+# ggsave(
+#   "./plots/circumpolar_maps/rts_total_area_map.png",
 #   total_area_hexplot,
 #   height = 6.5,
 #   width = 6.5
 # )
 
 # ggsave(
-#   "./plots/rts_total_area_map.svg",
+#   "./plots/circumpolar_maps/rts_total_area_map.svg",
 #   total_area_hexplot,
 #   height = 6.5,
 #   width = 6.5
@@ -904,12 +980,21 @@ median_area_hexplot <- plot_hex_grid(
   rts_hex,
   geometry,
   geometry_scaled_median_area,
-  median_area_class
+  median_area_class,
+  yellow_red_palettes[[2]]
+)
+
+median_area_legend <- create_hex_legend(
+  rts_hex,
+  "Median Area",
+  4,
+  median_area_breaks,
+  yellow_red_palettes[[2]]
 )
 
 median_area_hexplot <- median_area_hexplot +
   inset_element(
-    create_hex_legend(rts_hex, "Median Area", 4, median_area_breaks),
+    median_area_legend,
     left = size_legend_location["left"],
     bottom = size_legend_location["bottom"],
     right = size_legend_location["right"],
@@ -920,14 +1005,21 @@ median_area_hexplot
 
 ```{r}
 # ggsave(
-#   "./plots/rts_median_area_map.png",
+#   "./plots/circumpolar_maps/legends/median_area_legend.svg",
+#   median_area_legend,
+#   height = 1.5,
+#   width = 2
+# )
+
+# ggsave(
+#   "./plots/circumpolar_maps/rts_median_area_map.png",
 #   median_area_hexplot,
 #   height = 6.5,
 #   width = 6.5
 # )
 
 # ggsave(
-#   "./plots/rts_median_area_map.svg",
+#   "./plots/circumpolar_maps/rts_median_area_map.svg",
 #   median_area_hexplot,
 #   height = 6.5,
 #   width = 6.5
@@ -943,12 +1035,21 @@ mean_prob_hexplot <- plot_hex_grid(
   rts_hex,
   geometry,
   geometry_scaled_mean_prob,
-  mean_prob_class
+  mean_prob_class,
+  yellow_red_palettes[[2]]
+)
+
+mean_prob_legend <- create_hex_legend(
+  rts_hex,
+  "Mean Probability",
+  4,
+  mean_prob_breaks,
+  yellow_red_palettes[[2]]
 )
 
 mean_prob_hexplot <- mean_prob_hexplot +
   inset_element(
-    create_hex_legend(rts_hex, "Mean Probability", 4, mean_prob_breaks),
+    mean_prob_legend,
     left = size_legend_location["left"],
     bottom = size_legend_location["bottom"],
     right = size_legend_location["right"],
@@ -959,14 +1060,21 @@ mean_prob_hexplot
 
 ```{r}
 # ggsave(
-#   "./plots/rts_mean_prob_map.png",
+#   "./plots/circumpolar_maps/legends/mean_prob_legend.svg",
+#   mean_prob_legend,
+#   height = 1.5,
+#   width = 2
+# )
+
+# ggsave(
+#   "./plots/circumpolar_maps/rts_mean_prob_map.png",
 #   mean_prob_hexplot,
 #   height = 6.5,
 #   width = 6.5
 # )
 
 # ggsave(
-#   "./plots/rts_mean_prob_map.svg",
+#   "./plots/circumpolar_maps/rts_mean_prob_map.svg",
 #   mean_prob_hexplot,
 #   height = 6.5,
 #   width = 6.5
@@ -982,12 +1090,21 @@ max_prob_hexplot <- plot_hex_grid(
   rts_hex,
   geometry,
   geometry_scaled_max_prob,
-  max_prob_class
+  max_prob_class,
+  yellow_red_palettes[[2]]
+)
+
+max_prob_legend <- create_hex_legend(
+  rts_hex,
+  "Max Probability",
+  4,
+  max_prob_breaks,
+  yellow_red_palettes[[2]]
 )
 
 max_prob_hexplot <- max_prob_hexplot +
   inset_element(
-    create_hex_legend(rts_hex, "Max Probability", 4, max_prob_breaks),
+    max_prob_legend,
     left = size_legend_location["left"],
     bottom = size_legend_location["bottom"],
     right = size_legend_location["right"],
@@ -998,14 +1115,21 @@ max_prob_hexplot
 
 ```{r}
 # ggsave(
-#   "./plots/rts_max_prob_map.png",
+#   "./plots/circumpolar_maps/legends/max_prob_legend.svg",
+#   max_prob_legend,
+#   height = 1.5,
+#   width = 2
+# )
+
+# ggsave(
+#   "./plots/circumpolar_maps/rts_max_prob_map.png",
 #   max_prob_hexplot,
 #   height = 6.5,
 #   width = 6.5
 # )
 
 # ggsave(
-#   "./plots/rts_max_prob_map.svg",
+#   "./plots/circumpolar_maps/rts_max_prob_map.svg",
 #   max_prob_hexplot,
 #   height = 6.5,
 #   width = 6.5
