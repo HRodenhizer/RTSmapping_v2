@@ -411,14 +411,19 @@ lat_lines <- seq(50, 90, by = 10) %>%
   map(~ lat_lines_from_coords(.x, lon_min = -180, lon_max = 180)) %>%
   bind_rows()
 
-# world_ocean <- crop_bbox |>
-#   st_as_sfc() |>
-#   st_buffer(dist = 150000, joinStyle = "MITRE", mitreLimit = 150000) |>
-#   st_transform(st_crs(world_north)) |>
-#   st_difference(
-#     world_north |>
-#       st_union()
-#   )
+world_ocean <- crop_bbox |>
+  st_as_sfc() |>
+  st_buffer(dist = 150000, joinStyle = "MITRE", mitreLimit = 150000) |>
+  st_transform(st_crs(world_north)) |>
+  st_difference(
+    world_north |>
+      st_union()
+  )
+
+# st_write(
+#   world_ocean,
+#   "./visualization/data/world_oceans.geojson"
+# )
 ```
 
 ## Cities
@@ -750,25 +755,52 @@ region_hex <- hex_grid |>
 # )
 ```
 
-# Prep First Zoom Inset
+# Prep Hex Inset
 
 ```{r}
 example_hex <- rts_hex |>
   filter(total_count == max(total_count))
 
-example_rts <- rts |>
-  st_intersection(example_hex)
-
 example_bbox <- st_bbox(example_hex)
+example_bbox <- example_hex |>
+  st_buffer(
+    dist = (example_bbox["xmax"] - example_bbox["xmin"]) * 0.05,
+    joinStyle = "MITRE",
+    mitreLimit = (example_bbox["xmax"] - example_bbox["xmin"]) * 0.05
+  ) |>
+  st_bbox() |>
+  st_as_sfc(crs = st_crs(example_rts)) |>
+  st_as_sf()
+
+example_rts <- rts |>
+  st_intersection(example_bbox)
+
+example_background <- example_bbox |>
+  st_difference(example_hex)
 
 example_world <- world_north |>
-  st_crop(
-    example_hex |>
-      st_buffer(
-        dist = (example_bbox["xmax"] - example_bbox["xmin"]) * 0.05,
-        joinStyle = "MITRE",
-        mitreLimit = (example_bbox["xmax"] - example_bbox["xmin"]) * 0.05
-      )
+  st_crop(example_bbox)
+
+example_ocean <- world_ocean |>
+  st_crop(example_bbox)
+
+example_grid <- st_make_grid(
+  example_bbox,
+  cellsize = 5000
+) |>
+  st_as_sf() |>
+  rename(geometry = x) |>
+  st_crop(example_bbox)
+
+example_grid <- example_grid |>
+  st_join(example_rts) |>
+  summarize(
+    total_count = n(),
+    total_area = sum(area_m2),
+    median_area = median(area_m2),
+    mean_prob = sum(mean_prob * area_m2) / total_area,
+    max_prob = sum(max_prob * area_m2) / total_area,
+    .by = c(geometry)
   )
 ```
 
@@ -898,22 +930,37 @@ total_count_hexplot
 # )
 ```
 
-## 1 Hex Zoom
+## Hex Inset
 
 ```{r}
 ggplot(
-  example_world
+  # example_world
 ) +
-  geom_sf(
-    color = 'gray85',
-    fill = 'gray85'
+  # geom_sf(
+  #   color = 'gray85',
+  #   fill = 'gray85'
+  # ) +
+  # geom_sf(data = example_rts) +
+  geom_sf(data = example_grid, aes(color = total_count, fill = total_count)) +
+  scale_color_gradientn(
+    name = "RTS Count",
+    colors = yellow_red_palettes[[1]]
   ) +
-  geom_sf(data = example_rts) +
-  geom_sf(data = example_hex, fill = "transparent", linewidth = 0.5) +
+  scale_fill_gradientn(
+    name = "RTS Count",
+    colors = yellow_red_palettes[[1]]
+  ) +
+  geom_sf(data = example_ocean, color = "transparent", fill = "#CCCCDD") +
+  geom_sf(
+    data = example_background,
+    color = "transparent",
+    fill = "#FFFFFF",
+    alpha = 0.75
+  ) +
+  # geom_sf(data = example_hex, fill = "transparent", linewidth = 0.5) +
 
   # Aesthetic Options
-  scale_x_continuous(expand = expansion(mult = c(0, 0))) +
-  scale_y_continuous(expand = expansion(mult = c(0, 0.05)))
+  coord_sf(expand = FALSE)
 ```
 
 ## RTS Area Map
