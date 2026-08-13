@@ -348,6 +348,14 @@ rts <- st_read("../RTSMapping_v2_products/2025q3/south_rts_candidates.gpkg") |>
 hex_grid <- st_read("./visualization/data/training_hex_grid.geojson")
 ```
 
+## ARTS
+
+```{r}
+arts <- st_read(
+  "../ARTS/ARTS_main_dataset/v.6.0.0/ARTS_main_dataset_v.6.0.0.geojson"
+)
+```
+
 ## Countries Map
 
 ```{r}
@@ -585,7 +593,7 @@ alaska <- us |>
     crs = st_crs(world_north)
   ))
 
-ak_rts <- rts_pts |>
+ak_rts_pred <- rts_pts |>
   st_join(alaska, join = st_within, left = FALSE) |>
   mutate(
     conf_class = factor(
@@ -594,24 +602,53 @@ ak_rts <- rts_pts |>
     )
   )
 
+ak_rts_arts <- arts |>
+  filter(TrainClass == "Positive") |>
+  st_centroid() |>
+  st_transform(6931) |>
+  st_join(alaska, join = st_within, left = FALSE)
+
 ggplot(alaska) +
   geom_sf() +
   geom_sf(
-    data = ak_rts,
-    aes(color = conf_class)
+    data = ak_rts_arts,
+    aes(color = "ARTS Observations"),
+    size = 0.1
   ) +
   scale_color_manual(
+    name = "ARTS\nObservations",
+    values = c("red"),
+    labels = NULL
+  ) +
+  new_scale_color() +
+  geom_sf(
+    data = ak_rts_pred,
+    aes(color = conf_class),
+    size = 0.1
+  ) +
+  scale_color_manual(
+    name = "Model\nConfidence",
     values = c("gray80", "gray50", "black")
   ) +
   coord_sf(crs = 6396) # AK State Plane Zone 3
 
-# ggsave("./plots/circumpolar_mapsak_rts_pts.png")
+# ggsave(
+#   "./plots/ak_rts_pts.png",
+#   height = 2.7,
+#   width = 6.5
+# )
 
-ak_rts |>
+ak_rts_pred |>
   st_drop_geometry() |>
   summarise(
     count = n(),
     .by = conf_class
+  ) |>
+  bind_rows(
+    tibble(
+      conf_class = c("ARTS observations"),
+      count = nrow(ak_rts_arts)
+    )
   )
 ```
 
