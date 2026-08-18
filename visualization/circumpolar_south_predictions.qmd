@@ -806,11 +806,21 @@ inset1_hex <- rts_hex |>
   filter(total_count == max(total_count))
 
 inset1_bbox <- st_bbox(inset1_hex)
-inset1_bbox <- inset1_hex |>
+inset1_figure_bbox <- inset1_hex |>
   st_buffer(
     dist = (inset1_bbox["xmax"] - inset1_bbox["xmin"]) * 0.05,
     joinStyle = "MITRE",
     mitreLimit = (inset1_bbox["xmax"] - inset1_bbox["xmin"]) * 0.05
+  ) |>
+  st_bbox() |>
+  st_as_sfc(crs = st_crs(inset1_rts)) |>
+  st_as_sf()
+
+inset1_bbox <- inset1_hex |>
+  st_buffer(
+    dist = (inset1_bbox["xmax"] - inset1_bbox["xmin"]) * 2,
+    joinStyle = "MITRE",
+    mitreLimit = (inset1_bbox["xmax"] - inset1_bbox["xmin"]) * 2
   ) |>
   st_bbox() |>
   st_as_sfc(crs = st_crs(inset1_rts)) |>
@@ -849,9 +859,10 @@ inset1_grid <- inset1_grid |>
 ```
 
 ```{r}
+# st_write(inset1_background, "./visualization/data/inset1_background.geojson")
+# st_write(inset1_bbox, "./visualization/data/inset1_bbox.geojson")
 # st_write(inset1_grid, "./visualization/data/inset1_grid.geojson")
 # st_write(inset1_hex, "./visualization/data/inset1_hex.geojson")
-# st_write(inset1_background, "./visualization/data/inset1_background.geojson")
 # st_write(inset1_rts, "./visualization/data/inset1_rts.geojson")
 ```
 
@@ -859,7 +870,12 @@ inset1_grid <- inset1_grid |>
 
 ```{r}
 inset1_planet_grids <- planet_grids |>
-  st_filter(inset1_bbox, .predicate = st_within)
+  st_filter(
+    st_bbox(inset1_hex) |>
+      st_as_sfc(crs = st_crs(inset1_rts)) |>
+      st_as_sf(),
+    .predicate = st_within
+  )
 
 inset2_bbox <- inset1_planet_grids |>
   # st_bbox() |>
@@ -891,7 +907,11 @@ inset2_ocean <- inset1_ocean |>
 
 
 ggplot() +
-  geom_sf(data = inset1_grid, aes(color = total_count, fill = total_count)) +
+  geom_sf(
+    data = inset1_grid |>
+      st_crop(inset1_figure_bbox),
+    aes(color = total_count, fill = total_count)
+  ) +
   scale_color_gradientn(
     name = "RTS Count",
     colors = yellow_red_palettes[[1]]
@@ -900,14 +920,25 @@ ggplot() +
     name = "RTS Count",
     colors = yellow_red_palettes[[1]]
   ) +
-  geom_sf(data = inset1_ocean, color = "transparent", fill = "#CCCCDD") +
   geom_sf(
-    data = inset1_background,
+    data = inset1_ocean |>
+      st_crop(inset1_figure_bbox),
+    color = "transparent",
+    fill = "#CCCCDD"
+  ) +
+  geom_sf(
+    data = inset1_background |>
+      st_crop(inset1_figure_bbox),
     color = "transparent",
     fill = "#FFFFFF",
     alpha = 0.75
   ) +
-  geom_sf(data = inset1_planet_grids, fill = "transparent", linewidth = 0.5) +
+  geom_sf(
+    data = inset1_planet_grids |>
+      st_crop(inset1_figure_bbox),
+    fill = "transparent",
+    linewidth = 0.5
+  ) +
   # geom_sf_text(data = inset1_planet_grids, aes(label = id)) +
   geom_sf(data = inset2_bbox, fill = "transparent", linewidth = 1) +
 
@@ -916,7 +947,6 @@ ggplot() +
 ```
 
 ```{r}
-# st_write(inset1_bbox, "./visualization/data/inset1_bbox.geojson")
 # st_write(inset2_rts, "./visualization/data/inset2_rts.geojson")
 # st_write(
 #   inset2_planet_grids,
