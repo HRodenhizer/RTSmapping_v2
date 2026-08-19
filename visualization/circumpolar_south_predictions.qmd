@@ -106,6 +106,8 @@ create_hex_legend <- function(dataset, variable_name, n, breaks, colors) {
     ) |>
     select(count, geometry, geometry_scaled)
 
+  hex_legend_bbox <- st_bbox(hex_legend_data)
+
   # arrow <- tibble(
   #   x = 0 - 100000,
   #   y = 0 + 15000,
@@ -123,13 +125,13 @@ create_hex_legend <- function(dataset, variable_name, n, breaks, colors) {
   labels <- tibble(
     x = rep(-20000, 4),
     xend = c(
-      st_bbox(hex_legend_data)["xmax"] -
-        (st_bbox(hex_legend_data)["xmax"] - st_bbox(hex_legend_data)["xmin"]) /
+      hex_legend_bbox["xmax"] -
+        (hex_legend_bbox["xmax"] - hex_legend_bbox["xmin"]) /
           2,
       NA,
       NA,
-      st_bbox(hex_legend_data)["xmax"] -
-        (st_bbox(hex_legend_data)["xmax"] - st_bbox(hex_legend_data)["xmin"]) /
+      hex_legend_bbox["xmax"] -
+        (hex_legend_bbox["xmax"] - hex_legend_bbox["xmin"]) /
           2
     ),
     y = seq(
@@ -183,19 +185,23 @@ create_hex_legend <- function(dataset, variable_name, n, breaks, colors) {
       ),
       hjust = 1,
       nudge_x = -20000,
-      size = 3
+      size = 6
     ) +
-    labs(
-      title = variable_name
+    geom_text(
+      aes(
+        x = hex_legend_bbox["xmax"] +
+          (hex_legend_bbox["xmax"] - hex_legend_bbox["xmin"]) * 0.2,
+        y = hex_legend_bbox["ymin"] +
+          (hex_legend_bbox["ymax"] - hex_legend_bbox["ymin"]) / 2,
+        label = variable_name
+      ),
+      hjust = 0,
+      size = 12
     ) +
     coord_sf(clip = "off") +
     theme_void() +
     theme(
-      plot.title = element_text(
-        size = 12,
-        hjust = 0.5
-      ),
-      plot.margin = margin(3, 3, 3, 40, unit = "pt"),
+      plot.margin = margin(0.1, 2.4, 0.1, 1.1, unit = "in"),
       legend.position = "none"
     )
 
@@ -799,52 +805,78 @@ rts_hex <- rts_hex |>
 # )
 ```
 
-## Hex Inset
+## Hex Inset (Several Options)
 
 ```{r}
 inset1_hex <- rts_hex |>
-  filter(total_count == max(total_count))
+  arrange(desc(total_count)) |>
+  slice(1:6) |>
+  mutate(id = 1:n(), .before = total_count)
 
-inset1_bbox <- st_bbox(inset1_hex)
-inset1_figure_bbox <- inset1_hex |>
-  st_buffer(
-    dist = (inset1_bbox["xmax"] - inset1_bbox["xmin"]) * 0.05,
-    joinStyle = "MITRE",
-    mitreLimit = (inset1_bbox["xmax"] - inset1_bbox["xmin"]) * 0.05
-  ) |>
-  st_bbox() |>
-  st_as_sfc(crs = st_crs(inset1_rts)) |>
-  st_as_sf()
+inset1_bbox <- map(
+  seq(1:6),
+  ~ inset1_hex |>
+    slice(.x) |>
+    st_bbox()
+)
 
-inset1_bbox <- inset1_hex |>
-  st_buffer(
-    dist = (inset1_bbox["xmax"] - inset1_bbox["xmin"]) * 2,
-    joinStyle = "MITRE",
-    mitreLimit = (inset1_bbox["xmax"] - inset1_bbox["xmin"]) * 2
-  ) |>
-  st_bbox() |>
-  st_as_sfc(crs = st_crs(inset1_rts)) |>
-  st_as_sf()
-
-inset1_rts <- rts |>
-  st_intersection(inset1_bbox)
-
-inset1_background <- inset1_bbox |>
-  st_difference(inset1_hex)
-
-inset1_world <- world_north |>
-  st_crop(inset1_bbox)
-
-inset1_ocean <- world_ocean |>
-  st_crop(inset1_bbox)
-
-inset1_grid <- st_make_grid(
+inset1_figure_bbox <- map2(
+  seq(1:6),
   inset1_bbox,
-  cellsize = 5000
+  ~ inset1_hex |>
+    slice(.x) |>
+    st_buffer(
+      dist = (.y["xmax"] - .y["xmin"]) * 0.05,
+      joinStyle = "MITRE",
+      mitreLimit = (.y["xmax"] - .y["xmin"]) * 0.05
+    ) |>
+    st_bbox() |>
+    st_as_sfc() |>
+    st_as_sf() |>
+    rename(geometry = x)
+)
+
+inset1_bbox <- map2_df(
+  seq(1:6),
+  inset1_bbox,
+  ~ inset1_hex |>
+    slice(.x) |>
+    st_buffer(
+      dist = (.y["xmax"] - .y["xmin"]) * 2,
+      joinStyle = "MITRE",
+      mitreLimit = (.y["xmax"] - .y["xmin"]) * 2
+    ) |>
+    st_bbox() |>
+    st_as_sfc() |>
+    st_as_sf() |>
+    rename(geometry = x)
+)
+
+inset1_background <- map_df(
+  seq(1:6),
+  ~ inset1_bbox |>
+    slice(.x) |>
+    st_difference(inset1_hex |> slice(.x))
+)
+
+inset1_rts <- map_df(
+  seq(1:6),
+  ~ rts |>
+    st_intersection(
+      inset1_bbox |>
+        slice(.x)
+    )
 ) |>
+  filter(row_number() == 1, .by = rts_id)
+
+inset1_grid <- inset1_bbox |>
+  st_make_grid(
+    cellsize = 5000
+  ) |>
   st_as_sf() |>
   rename(geometry = x) |>
-  st_crop(inset1_bbox)
+  st_intersection(inset1_bbox |> st_union()) |>
+  st_intersection(world_north |> st_union())
 
 inset1_grid <- inset1_grid |>
   st_join(inset1_rts) |>
@@ -859,7 +891,6 @@ inset1_grid <- inset1_grid |>
 ```
 
 ```{r}
-# st_write(inset1_background, "./visualization/data/inset1_background.geojson")
 # st_write(inset1_bbox, "./visualization/data/inset1_bbox.geojson")
 # st_write(inset1_grid, "./visualization/data/inset1_grid.geojson")
 # st_write(inset1_hex, "./visualization/data/inset1_hex.geojson")
@@ -868,86 +899,164 @@ inset1_grid <- inset1_grid |>
 
 ## Imagery Inset
 
+Find the cluster of cells with the highest number of RTS using a neighborhood function.
+
 ```{r}
-inset1_planet_grids <- planet_grids |>
-  st_filter(
-    st_bbox(inset1_hex) |>
-      st_as_sfc(crs = st_crs(inset1_rts)) |>
-      st_as_sf(),
-    .predicate = st_within
-  )
+template <- inset1_grid |>
+  vect() |>
+  rast(res = 5000)
 
-inset2_bbox <- inset1_planet_grids |>
-  # st_bbox() |>
-  # st_as_sfc(crs = st_crs(inset1_rts)) |>
-  # st_as_sf() |>
-  # st_buffer(dist = -150000)
-  st_crop(
-    xmin = -1734000,
-    xmax = -1698000,
-    ymin = 990000,
-    ymax = 1020000
-  ) |>
-  st_union() |>
-  st_bbox() |>
-  st_as_sfc() |>
-  st_as_sf()
+inset1_rast <- inset1_grid |>
+  vect() |>
+  rasterize(template, field = "total_count")
 
-inset2_planet_grids <- inset1_planet_grids |>
-  st_crop(inset2_bbox)
+# Get bounding boxes of areas with a lot of RTS
+inset2_bbox <- map_df(
+  seq(1:nrow(inset1_hex)),
+  ~ inset1_grid |>
+    st_join(
+      inset1_rast |>
+        crop(
+          inset1_hex |>
+            slice(.x) |>
+            vect()
+        ) |>
+        mask(
+          inset1_hex |>
+            slice(.x) |>
+            vect()
+        ) |>
+        focal(w = 3, na.rm = TRUE, na.policy = "omit") |>
+        as.data.frame(xy = TRUE) |>
+        st_as_sf(coords = c("x", "y"), crs = st_crs(inset1_grid)) |>
+        arrange(desc(focal_sum)) |>
+        mutate(id = .x) |>
+        slice_head(n = 1),
+      left = FALSE
+    ) |>
+    st_buffer(
+      dist = 5000,
+      joinStyle = "MITRE",
+      mitreLimit = 5000
+    )
+)
 
-inset2_rts <- inset1_rts |>
-  st_intersection(inset2_bbox)
-
-inset2_world <- inset1_world |>
-  st_crop(inset2_bbox)
-
-inset2_ocean <- inset1_ocean |>
-  st_crop(inset2_bbox)
-
-
-ggplot() +
-  geom_sf(
-    data = inset1_grid |>
-      st_crop(inset1_figure_bbox),
-    aes(color = total_count, fill = total_count)
+map(
+  seq(1:nrow(inset1_hex)),
+  ~ ggplot(
+    # inset1_world
   ) +
-  scale_color_gradientn(
-    name = "RTS Count",
-    colors = yellow_red_palettes[[1]]
-  ) +
-  scale_fill_gradientn(
-    name = "RTS Count",
-    colors = yellow_red_palettes[[1]]
-  ) +
-  geom_sf(
-    data = inset1_ocean |>
-      st_crop(inset1_figure_bbox),
-    color = "transparent",
-    fill = "#CCCCDD"
-  ) +
-  geom_sf(
-    data = inset1_background |>
-      st_crop(inset1_figure_bbox),
-    color = "transparent",
-    fill = "#FFFFFF",
-    alpha = 0.75
-  ) +
-  geom_sf(
-    data = inset1_planet_grids |>
-      st_crop(inset1_figure_bbox),
-    fill = "transparent",
-    linewidth = 0.5
-  ) +
-  # geom_sf_text(data = inset1_planet_grids, aes(label = id)) +
-  geom_sf(data = inset2_bbox, fill = "transparent", linewidth = 1) +
+    # geom_sf(
+    #   color = 'gray85',
+    #   fill = 'gray85'
+    # ) +
+    # geom_sf(data = inset1_rts) +
+    geom_sf(
+      data = inset1_grid |>
+        st_crop(inset1_figure_bbox[[.x]]),
+      aes(color = total_count, fill = total_count)
+    ) +
+    scale_color_gradientn(
+      name = "RTS Count",
+      colors = rts_palettes[[1]]
+    ) +
+    scale_fill_gradientn(
+      name = "RTS Count",
+      colors = rts_palettes[[1]]
+    ) +
+    new_scale_color() +
+    geom_sf(
+      data = world_ocean |>
+        st_crop(inset1_figure_bbox[[.x]]),
+      color = "transparent",
+      fill = "#CCCCDD"
+    ) +
+    geom_sf(
+      data = inset1_background |>
+        slice(.x) |>
+        st_crop(inset1_figure_bbox[[.x]]),
+      color = "transparent",
+      fill = "#FFFFFF",
+      alpha = 0.75
+    ) +
+    geom_sf(
+      data = inset1_hex |>
+        slice(.x) |>
+        st_crop(inset1_figure_bbox[[.x]]),
+      fill = "transparent",
+      linewidth = 0.5
+    ) +
+    geom_sf(
+      data = inset2_bbox |>
+        filter(id == .x),
+      fill = "transparent",
+      linewidth = 0.5
+    ) +
 
-  # Aesthetic Options
-  coord_sf(expand = FALSE)
+    # Aesthetic Options
+    coord_sf(expand = FALSE)
+)
+
+inset2_planet_grids <- map_df(
+  seq(1:nrow(inset1_hex)),
+  ~ planet_grids |>
+    st_filter(
+      inset2_bbox |>
+        slice(.x),
+      .predicate = st_intersects
+    )
+)
+
+map(
+  seq(1:nrow(inset1_hex)),
+  ~ ggplot() +
+    geom_sf(
+      data = inset1_grid |>
+        st_crop(inset2_bbox |> slice(.x)),
+      aes(color = total_count, fill = total_count)
+    ) +
+    scale_color_gradientn(
+      name = "RTS Count",
+      colors = rts_palettes[[1]]
+    ) +
+    scale_fill_gradientn(
+      name = "RTS Count",
+      colors = rts_palettes[[1]]
+    ) +
+    geom_sf(
+      data = inset1_ocean |>
+        st_crop(inset2_bbox |> slice(.x)),
+      color = "transparent",
+      fill = "#CCCCDD"
+    ) +
+    geom_sf(
+      data = inset2_planet_grids |>
+        st_crop(inset2_bbox |> slice(.x)),
+      fill = "transparent",
+      linewidth = 0.5
+    ) +
+    geom_sf_text(
+      data = inset2_planet_grids |>
+        st_crop(inset2_bbox |> slice(.x)),
+      aes(label = id)
+    ) +
+    geom_sf(
+      data = inset1_rts |>
+        st_crop(inset2_bbox |> slice(.x))
+    ) +
+    # geom_sf_text(data = inset1_planet_grids, aes(label = id)) +
+    geom_sf(
+      data = inset2_bbox |> slice(.x),
+      fill = "transparent",
+      linewidth = 1
+    ) +
+
+    # Aesthetic Options
+    coord_sf(expand = FALSE)
+)
 ```
 
 ```{r}
-# st_write(inset2_rts, "./visualization/data/inset2_rts.geojson")
 # st_write(
 #   inset2_planet_grids,
 #   "./visualization/data/inset2_planet_grids.geojson"
@@ -976,25 +1085,50 @@ region_hex <- hex_grid |>
 
 ## Visualization Prep
 
-### Prepare Elevation/Permafrost Blend
+### Prepare Permafrost Legend
 
 ```{r}
-# blend_overlay <- function(a, b) {
-#   case_when(
-#     a < 0.5 ~ 2 * a * b,
-#     is.na(b) ~ a,
-#     TRUE ~ (1 - 2 * (1 - a) * (1 - b))
-#   )
-# }
+#| fig-width: 4.2
+#| fig-height: 1.5
 
-# elev_perm_overlay <- c(
-#   hillshd,
-#   permafrost |>
-#     project(hillshd) |>
-#     app(fun = function(x) x / 100)
+ggplot() +
+  geom_rect(
+    aes(
+      xmin = 0,
+      xmax = 1,
+      ymin = 0,
+      ymax = 1
+    ),
+    color = "transparent",
+    fill = "#6699CD"
+  ) +
+  geom_text(
+    aes(
+      x = 1.2,
+      y = 0.5,
+      label = "Permafrost"
+    ),
+    hjust = 0,
+    size = 12
+  ) +
+  theme_void() +
+  coord_fixed(
+    clip = "off"
+  ) +
+  theme(
+    plot.margin = margin(0.1, 2.6, 0.1, 0.1, unit = "in")
+  )
+
+# ggsave(
+#   "./plots/circumpolar_maps/legends/permafrost.svg",
+#   height = 1.5,
+#   width = 4.2
 # )
-# names(elev_perm_overlay) <- c("hillshd", "perm_prob")
-# elev_perm_overlay[["blend"]] <- lapp(elev_perm_overlay[[1:2]], blend_overlay)
+# ggsave(
+#   "./plots/circumpolar_maps/legends/permafrost.png",
+#   height = 1.5,
+#   width = 4.2
+# )
 ```
 
 ### Colors
@@ -1005,6 +1139,17 @@ reds_10 <- reds(10)
 red_min <- reds_10[2]
 red_max <- reds_10[10]
 yellow_reds <- colorRampPalette(c("#fff7aa", "#ff6600", "#800000"))
+rts_colors <- colorRampPalette(c("#FFFFFF", "#BAB08C", "#9F6155", "#4D0001")) # From Greg's RTS color ramp in his style file
+rts_palettes <- list(
+  rts_colors_3 = rts_colors(3),
+  rts_colors_4 = rts_colors(4),
+  rts_colors_5 = rts_colors(5),
+  rts_colors_6 = rts_colors(6),
+  rts_colors_7 = rts_colors(7),
+  rts_colors_8 = rts_colors(8),
+  rts_colors_9 = rts_colors(9),
+  rts_colors_10 = rts_colors(10)
+)
 yellow_red_palettes <- list(
   yellow_red_3 = yellow_reds(3),
   yellow_red_4 = yellow_reds(4),
@@ -1032,6 +1177,19 @@ yellow_red_palettes <- list(
 #   ),
 #   "./visualization/data/color_ramps.csv"
 # )
+# write_csv(
+#   tibble(
+#     rts_colors_3 = c(rts_colors(3), rep(NA, 7)),
+#     rts_colors_4 = c(rts_colors(4), rep(NA, 6)),
+#     rts_colors_5 = c(rts_colors(5), rep(NA, 5)),
+#     rts_colors_6 = c(rts_colors(6), rep(NA, 4)),
+#     rts_colors_7 = c(rts_colors(7), rep(NA, 3)),
+#     rts_colors_8 = c(rts_colors(8), rep(NA, 2)),
+#     rts_colors_9 = c(rts_colors(9), rep(NA, 1)),
+#     rts_colors_10 = rts_colors(10)
+#   ),
+#   "./visualization/data/rts_color_ramps.csv"
+# )
 ```
 
 ### Hex Legend Location
@@ -1055,15 +1213,15 @@ total_count_hexplot <- plot_hex_grid(
   geometry,
   geometry_scaled_total_count,
   total_count_class,
-  yellow_red_palettes[[2]]
+  rts_palettes[[2]]
 )
 
 total_count_legend <- create_hex_legend(
   rts_hex,
-  "Total Count",
+  "RTS Count",
   4,
   total_count_breaks,
-  yellow_red_palettes[[2]]
+  rts_palettes[[2]]
 )
 
 total_count_hexplot <- total_count_hexplot +
@@ -1079,10 +1237,17 @@ total_count_hexplot
 
 ```{r}
 # ggsave(
+#   "./plots/circumpolar_maps/legends/total_count_legend.png",
+#   total_count_legend,
+#   height = 1.5,
+#   width = 5.2
+# )
+
+# ggsave(
 #   "./plots/circumpolar_maps/legends/total_count_legend.svg",
 #   total_count_legend,
 #   height = 1.5,
-#   width = 1.8
+#   width = 5.2
 # )
 
 # ggsave(
@@ -1103,34 +1268,54 @@ total_count_hexplot
 ### Hex Inset
 
 ```{r}
-ggplot(
-  # inset1_world
-) +
-  # geom_sf(
-  #   color = 'gray85',
-  #   fill = 'gray85'
-  # ) +
-  # geom_sf(data = inset1_rts) +
-  geom_sf(data = inset1_grid, aes(color = total_count, fill = total_count)) +
-  scale_color_gradientn(
-    name = "RTS Count",
-    colors = yellow_red_palettes[[1]]
+map(
+  seq(1:nrow(inset1_hex)),
+  ~ ggplot(
+    # inset1_world
   ) +
-  scale_fill_gradientn(
-    name = "RTS Count",
-    colors = yellow_red_palettes[[1]]
-  ) +
-  geom_sf(data = inset1_ocean, color = "transparent", fill = "#CCCCDD") +
-  geom_sf(
-    data = inset1_background,
-    color = "transparent",
-    fill = "#FFFFFF",
-    alpha = 0.75
-  ) +
-  # geom_sf(data = inset1_hex, fill = "transparent", linewidth = 0.5) +
+    # geom_sf(
+    #   color = 'gray85',
+    #   fill = 'gray85'
+    # ) +
+    # geom_sf(data = inset1_rts) +
+    geom_sf(
+      data = inset1_grid |>
+        st_crop(inset1_figure_bbox[[.x]]),
+      aes(color = total_count, fill = total_count)
+    ) +
+    scale_color_gradientn(
+      name = "RTS Count",
+      colors = rts_palettes[[1]]
+    ) +
+    scale_fill_gradientn(
+      name = "RTS Count",
+      colors = rts_palettes[[1]]
+    ) +
+    geom_sf(
+      data = world_ocean |>
+        st_crop(inset1_figure_bbox[[.x]]),
+      color = "transparent",
+      fill = "#CCCCDD"
+    ) +
+    geom_sf(
+      data = inset1_background |>
+        slice(.x) |>
+        st_crop(inset1_figure_bbox[[.x]]),
+      color = "transparent",
+      fill = "#FFFFFF",
+      alpha = 0.75
+    ) +
+    geom_sf(
+      data = inset1_hex |>
+        slice(.x) |>
+        st_crop(inset1_figure_bbox[[.x]]),
+      fill = "transparent",
+      linewidth = 0.5
+    ) +
 
-  # Aesthetic Options
-  coord_sf(expand = FALSE)
+    # Aesthetic Options
+    coord_sf(expand = FALSE)
+)
 ```
 
 
@@ -1156,15 +1341,15 @@ total_area_hexplot <- plot_hex_grid(
   geometry,
   geometry_scaled_total_area,
   total_area_class,
-  yellow_red_palettes[[2]]
+  rts_palettes[[2]]
 )
 
 total_area_legend <- create_hex_legend(
   rts_hex,
-  "Total Area",
+  "Total\nRTS Area",
   4,
   total_area_breaks,
-  yellow_red_palettes[[2]]
+  rts_palettes[[2]]
 )
 
 total_area_hexplot <- total_area_hexplot +
@@ -1180,10 +1365,17 @@ total_area_hexplot
 
 ```{r}
 # ggsave(
+#   "./plots/circumpolar_maps/legends/total_area_legend.png",
+#   total_area_legend,
+#   height = 1.5,
+#   width = 5.2
+# )
+
+# ggsave(
 #   "./plots/circumpolar_maps/legends/total_area_legend.svg",
 #   total_area_legend,
 #   height = 1.5,
-#   width = 2
+#   width = 5.2
 # )
 
 # ggsave(
@@ -1211,15 +1403,15 @@ median_area_hexplot <- plot_hex_grid(
   geometry,
   geometry_scaled_median_area,
   median_area_class,
-  yellow_red_palettes[[2]]
+  rts_palettes[[2]]
 )
 
 median_area_legend <- create_hex_legend(
   rts_hex,
-  "Median Area",
+  "Median\nRTS Area",
   4,
   median_area_breaks,
-  yellow_red_palettes[[2]]
+  rts_palettes[[2]]
 )
 
 median_area_hexplot <- median_area_hexplot +
@@ -1235,10 +1427,17 @@ median_area_hexplot
 
 ```{r}
 # ggsave(
+#   "./plots/circumpolar_maps/legends/median_area_legend.png",
+#   median_area_legend,
+#   height = 1.5,
+#   width = 5.2
+# )
+
+# ggsave(
 #   "./plots/circumpolar_maps/legends/median_area_legend.svg",
 #   median_area_legend,
 #   height = 1.5,
-#   width = 2
+#   width = 5.2
 # )
 
 # ggsave(
@@ -1266,7 +1465,7 @@ mean_prob_hexplot <- plot_hex_grid(
   geometry,
   geometry_scaled_mean_prob,
   mean_prob_class,
-  yellow_red_palettes[[2]]
+  rts_palettes[[2]]
 )
 
 mean_prob_breaks[[4]] <- ceiling(mean_prob_breaks[[4]] * 100) / 100
@@ -1274,10 +1473,10 @@ mean_prob_breaks[[4]] <- ceiling(mean_prob_breaks[[4]] * 100) / 100
 
 mean_prob_legend <- create_hex_legend(
   rts_hex,
-  "Mean Probability",
+  "Mean RTS\nProbability",
   4,
   mean_prob_breaks,
-  yellow_red_palettes[[2]]
+  rts_palettes[[2]]
 )
 
 mean_prob_hexplot <- mean_prob_hexplot +
@@ -1293,10 +1492,17 @@ mean_prob_hexplot
 
 ```{r}
 # ggsave(
+#   "./plots/circumpolar_maps/legends/mean_prob_legend.png",
+#   mean_prob_legend,
+#   height = 1.5,
+#   width = 5.2
+# )
+
+# ggsave(
 #   "./plots/circumpolar_maps/legends/mean_prob_legend.svg",
 #   mean_prob_legend,
 #   height = 1.5,
-#   width = 2
+#   width = 5.2
 # )
 
 # ggsave(
@@ -1324,17 +1530,17 @@ max_prob_hexplot <- plot_hex_grid(
   geometry,
   geometry_scaled_max_prob,
   max_prob_class,
-  yellow_red_palettes[[2]]
+  rts_palettes[[2]]
 )
 
 max_prob_breaks[[4]] <- ceiling(max_prob_breaks[[4]] * 100) / 100
 
 max_prob_legend <- create_hex_legend(
   rts_hex,
-  "Max Probability",
+  "Max RTS\nProbability",
   4,
   max_prob_breaks,
-  yellow_red_palettes[[2]]
+  rts_palettes[[2]]
 )
 
 max_prob_hexplot <- max_prob_hexplot +
@@ -1350,10 +1556,17 @@ max_prob_hexplot
 
 ```{r}
 # ggsave(
+#   "./plots/circumpolar_maps/legends/max_prob_legend.png",
+#   max_prob_legend,
+#   height = 1.5,
+#   width = 5.2
+# )
+
+# ggsave(
 #   "./plots/circumpolar_maps/legends/max_prob_legend.svg",
 #   max_prob_legend,
 #   height = 1.5,
-#   width = 2
+#   width = 5.2
 # )
 
 # ggsave(
