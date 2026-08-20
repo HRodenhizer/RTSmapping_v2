@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='UTF-8' ?>
-<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='302.40pt' height='108.00pt' viewBox='0 0 302.40 108.00'>
+<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='288.00pt' height='93.60pt' viewBox='0 0 288.00 93.60'>
 <g class='svglite'>
 <defs>
   <style type='text/css'><![CDATA[
@@ -21,23 +21,23 @@
 </defs>
 <rect width='100%' height='100%' style='stroke: none; fill: none;'/>
 <defs>
-  <clipPath id='cpMC4wMHwzMDIuNDB8MC4wMHwxMDguMDA='>
-    <rect x='0.00' y='0.00' width='302.40' height='108.00' />
+  <clipPath id='cpMC4wMHwyODguMDB8MC4wMHw5My42MA=='>
+    <rect x='0.00' y='0.00' width='288.00' height='93.60' />
   </clipPath>
 </defs>
-<g clip-path='url(#cpMC4wMHwzMDIuNDB8MC4wMHwxMDguMDA=)'>
+<g clip-path='url(#cpMC4wMHwyODguMDB8MC4wMHw5My42MA==)'>
 </g>
 <defs>
-  <clipPath id='cpMC4wMHwzMDIuNDB8MS44MHwxMDYuMjA='>
-    <rect x='0.00' y='1.80' width='302.40' height='104.40' />
+  <clipPath id='cpMC4wMHwyODguMDB8MC42MHw5My4wMA=='>
+    <rect x='0.00' y='0.60' width='288.00' height='92.40' />
   </clipPath>
 </defs>
-<g clip-path='url(#cpMC4wMHwzMDIuNDB8MS44MHwxMDYuMjA=)'>
-<rect x='-0.000000000000032' y='1.80' width='302.40' height='104.40' style='stroke-width: 0.00; stroke: none;' />
+<g clip-path='url(#cpMC4wMHwyODguMDB8MC42MHw5My4wMA==)'>
+<rect x='0.00' y='0.60' width='288.00' height='92.40' style='stroke-width: 0.00; stroke: none;' />
 </g>
-<g clip-path='url(#cpMC4wMHwzMDIuNDB8MC4wMHwxMDguMDA=)'>
-<rect x='12.11' y='13.09' width='81.82' height='81.82' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; stroke-linejoin: miter; fill: #6699CD;' />
-<text x='110.29' y='65.75' style='font-size: 34.14px; font-family: "Liberation Sans";' textLength='166.95px' lengthAdjust='spacingAndGlyphs'>Permafrost</text>
+<g clip-path='url(#cpMC4wMHwyODguMDB8MC4wMHw5My42MA==)'>
+<rect x='11.45' y='11.35' width='70.91' height='70.91' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; stroke-linejoin: miter; fill: #6699CD;' />
+<text x='96.55' y='58.55' style='font-size: 34.14px; font-family: "Liberation Sans";' textLength='166.95px' lengthAdjust='spacingAndGlyphs'>Permafrost</text>
 </g>
 </g>
 </svg>

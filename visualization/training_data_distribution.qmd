@@ -219,7 +219,7 @@ class_breaks <- c(0, 1, 100, 200)
 
 train_hex <- train_points |>
   st_make_grid(
-    cellsize = sqrt((100000 * 2) / (sqrt(3))) * 1000, # get short side length of hexagon from area == 10000 km^2, and convert to m
+    cellsize = sqrt((100000 * 2) / (sqrt(3))) * 1000, # get short side length of hexagon from area == 100000 km^2, and convert to m
     square = FALSE
   ) |>
   st_as_sf() |>
