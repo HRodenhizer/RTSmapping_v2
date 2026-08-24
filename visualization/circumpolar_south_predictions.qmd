@@ -1042,7 +1042,7 @@ template <- inset1_grid |>
 
 inset1_rast <- inset1_grid |>
   vect() |>
-  rasterize(template, field = "total_count")
+  rasterize(template, field = "total_count", touches = TRUE)
 ```
 
 ```{r}
