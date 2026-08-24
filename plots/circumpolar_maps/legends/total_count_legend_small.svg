@@ -1,0 +1,52 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='360.00pt' height='108.00pt' viewBox='0 0 360.00 108.00'>
+<g class='svglite'>
+<defs>
+  <style type='text/css'><![CDATA[
+    .svglite line, .svglite polyline, .svglite polygon, .svglite path, .svglite rect, .svglite circle {
+      fill: none;
+      stroke: #000000;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-miterlimit: 10.00;
+    }
+    .svglite text {
+      white-space: pre;
+    }
+    .svglite g.glyphgroup path {
+      fill: inherit;
+      stroke: none;
+    }
+  ]]></style>
+</defs>
+<rect width='100%' height='100%' style='stroke: none; fill: none;'/>
+<defs>
+  <clipPath id='cpMC4wMHwzNjAuMDB8MC4wMHwxMDguMDA='>
+    <rect x='0.00' y='0.00' width='360.00' height='108.00' />
+  </clipPath>
+</defs>
+<g clip-path='url(#cpMC4wMHwzNjAuMDB8MC4wMHwxMDguMDA=)'>
+</g>
+<defs>
+  <clipPath id='cpMC4wMHwzNjAuMDB8MS4xN3wxMDYuODM='>
+    <rect x='0.00' y='1.17' width='360.00' height='105.66' />
+  </clipPath>
+</defs>
+<g clip-path='url(#cpMC4wMHwzNjAuMDB8MS4xN3wxMDYuODM=)'>
+<rect x='0.00' y='1.17' width='360.00' height='105.66' style='stroke-width: 0.00; stroke: none;' />
+</g>
+<g clip-path='url(#cpMC4wMHwzNjAuMDB8MC4wMHwxMDguMDA=)'>
+<path d='M 132.00 95.48 L 96.07 74.74 L 96.07 33.26 L 132.00 12.52 L 167.92 33.26 L 167.92 74.74 L 132.00 95.48 Z' style='fill-rule: evenodd; fill: #4D0001; stroke-width: 0.43; stroke: #333333; stroke-linecap: butt;' />
+<path d='M 132.00 95.48 L 102.30 78.34 L 102.30 44.05 L 132.00 26.90 L 161.69 44.05 L 161.69 78.34 L 132.00 95.48 Z' style='fill-rule: evenodd; fill: #9F6155; stroke-width: 0.43; stroke: #333333; stroke-linecap: butt;' />
+<path d='M 132.00 95.48 L 110.24 82.92 L 110.24 57.80 L 132.00 45.24 L 153.75 57.80 L 153.75 82.92 L 132.00 95.48 Z' style='fill-rule: evenodd; fill: #BAB08C; stroke-width: 0.43; stroke: #333333; stroke-linecap: butt;' />
+<path d='M 132.00 95.48 L 123.96 90.85 L 123.96 81.57 L 132.00 76.93 L 140.03 81.57 L 140.03 90.85 L 132.00 95.48 Z' style='fill-rule: evenodd; fill: #FFFFFF; stroke-width: 0.43; stroke: #333333; stroke-linecap: butt;' />
+<line x1='90.09' y1='76.93' x2='132.00' y2='76.93' style='stroke-width: 0.43; stroke-linecap: butt;' />
+<line x1='90.09' y1='12.52' x2='132.00' y2='12.52' style='stroke-width: 0.43; stroke-linecap: butt;' />
+<text x='84.11' y='82.80' text-anchor='end' style='font-size: 17.07px; font-family: "Liberation Sans";' textLength='33.06px' lengthAdjust='spacingAndGlyphs'>≤ 10</text>
+<text x='84.11' y='61.33' text-anchor='end' style='font-size: 17.07px; font-family: "Liberation Sans";' textLength='42.55px' lengthAdjust='spacingAndGlyphs'>≤ 100</text>
+<text x='84.11' y='39.86' text-anchor='end' style='font-size: 17.07px; font-family: "Liberation Sans";' textLength='42.55px' lengthAdjust='spacingAndGlyphs'>≤ 600</text>
+<text x='84.11' y='18.39' text-anchor='end' style='font-size: 17.07px; font-family: "Liberation Sans";' textLength='52.03px' lengthAdjust='spacingAndGlyphs'>≤ 3560</text>
+<text x='182.29' y='65.75' style='font-size: 34.14px; font-family: "Liberation Sans";' textLength='168.25px' lengthAdjust='spacingAndGlyphs'>RTS Count</text>
+</g>
+</g>
+</svg>

@@ -756,7 +756,7 @@ rts_hex <- hex_grid |>
     .by = c(geometry)
   )
 
-test_small_rts_hex <- hex_grid |>
+rts_hex_small <- hex_grid |>
   st_make_grid(
     cellsize = sqrt((50000 * 2) / (sqrt(3))) * 1000, # get short side length of hexagon from area == 100000 km^2, and convert to m
     square = FALSE
@@ -775,7 +775,7 @@ test_small_rts_hex <- hex_grid |>
 
 ggplot() +
   geom_sf(
-    data = test_small_rts_hex,
+    data = rts_hex_small,
     aes(fill = total_count)
   ) +
   geom_sf(
@@ -813,6 +813,17 @@ total_count_breaks <- c(
   30,
   plyr::round_any(total_count_breaks[1:2], 50),
   total_count_breaks[3]
+)
+
+total_count_breaks_small <- rgeoda::natural_breaks(
+  4,
+  rts_hex_small["total_count"]
+)
+total_count_breaks_small <- c(
+  10,
+  100,
+  plyr::round_any(total_count_breaks_small[2], 50),
+  total_count_breaks_small[3]
 )
 
 total_area_breaks <- rgeoda::natural_breaks(4, rts_hex["total_area"])
@@ -884,9 +895,12 @@ rts_hex <- rts_hex |>
     ) # geometry of scaled hexagons
   )
 
-test_small_rts_hex <- test_small_rts_hex |>
+rts_hex_small <- rts_hex_small |>
   mutate(
-    total_count_class = classify_counts(total_count, c(10, 100, 1000, 5000)),
+    total_count_class = classify_counts(
+      total_count,
+      total_count_breaks_small
+    ),
     geometry_scaled_total_count = st_buffer(
       geometry,
       dist = calculate_buffer(total_count_class, 50000) * -1
@@ -910,6 +924,27 @@ test_small_rts_hex <- test_small_rts_hex |>
 #   filepaths,
 #   ~ st_write(
 #     rts_hex |>
+#       st_set_geometry(.x),
+#     .y,
+#     delete_dsn = TRUE
+#   )
+# )
+
+# geometry_cols <- rts_hex_small |>
+#   select(starts_with("geometry")) |>
+#   colnames()
+# filepaths <- paste0(
+#   "./visualization/data/rts_hex_small_2025_",
+#   str_replace(geometry_cols, "geometry_scaled_", ""),
+#   ".geojson"
+# )
+# filepaths[1] <- str_replace(filepaths[1], "_geometry", "")
+
+# walk2(
+#   geometry_cols,
+#   filepaths,
+#   ~ st_write(
+#     rts_hex_small |>
 #       st_set_geometry(.x),
 #     .y,
 #     delete_dsn = TRUE
@@ -1137,7 +1172,7 @@ map(
       colors = rts_palettes[[1]]
     ) +
     geom_sf(
-      data = inset1_ocean |>
+      data = world_ocean |>
         st_crop(inset2_bbox |> slice(.x)),
       color = "transparent",
       fill = "#CCCCDD"
@@ -1184,6 +1219,12 @@ region_hex <- hex_grid |>
   summarise(
     geometry = st_union(geometry)
   )
+
+region_hex_small <- rts_hex_small |>
+  st_join(circumpolar_south, left = FALSE) |>
+  summarise(
+    geometry = st_union(geometry)
+  )
 ```
 
 
@@ -1191,6 +1232,11 @@ region_hex <- hex_grid |>
 # st_write(
 #   region_hex,
 #   "./visualization/data/inference_region_hex_2025.geojson"
+# )
+
+# st_write(
+#   region_hex_small,
+#   "./visualization/data/inference_region_hex_small_2025.geojson"
 # )
 ```
 
@@ -1270,6 +1316,7 @@ total_count_hexplot <- plot_hex_grid(
 
 total_count_legend <- create_hex_legend(
   rts_hex,
+  100000,
   "RTS Count",
   4,
   total_count_breaks,
@@ -1317,37 +1364,67 @@ total_count_hexplot
 # )
 ```
 
-### Test 10,000 km^2 cell size rather than 100,000 km^2
+### Test 50,000 km^2 cell size rather than 100,000 km^2
 
 ```{r}
 #| fig-width: 6.5
 #| fig-height: 6.5
-test_count_hexplot <- plot_hex_grid(
-  test_small_rts_hex,
+total_count_hexplot_small <- plot_hex_grid(
+  rts_hex_small,
   geometry,
   geometry_scaled_total_count,
   total_count_class,
   rts_palettes[[2]]
 )
 
-test_count_legend <- create_hex_legend(
-  test_small_rts_hex,
+total_count_legend_small <- create_hex_legend(
+  rts_hex_small,
   50000,
   "RTS Count",
   4,
-  c(10, 100, 1000, 5000),
+  total_count_breaks_small,
   rts_palettes[[2]]
 )
 
-test_count_hexplot <- test_count_hexplot +
+total_count_hexplot_small <- total_count_hexplot_small +
   inset_element(
-    test_count_legend,
+    total_count_legend_small,
     left = size_legend_location["left"],
     bottom = size_legend_location["bottom"],
     right = size_legend_location["right"],
     top = size_legend_location["top"]
   )
-test_count_hexplot
+total_count_hexplot_small
+```
+
+```{r}
+# ggsave(
+#   "./plots/circumpolar_maps/legends/total_count_legend_small.png",
+#   total_count_legend_small,
+#   height = 1.5,
+#   width = 5
+# )
+
+# ggsave(
+#   "./plots/circumpolar_maps/legends/total_count_legend_small.svg",
+#   total_count_legend_small,
+#   height = 1.5,
+#   width = 5
+# )
+
+# ggsave(
+#   "./plots/circumpolar_maps/rts_total_count_map_small.png",
+#   total_count_hexplot_small,
+#   height = 6.5,
+#   width = 6.5
+# )
+
+# ggsave(
+#   "./plots/circumpolar_maps/rts_total_count_map_small.svg",
+#   total_count_hexplot_small,
+#   height = 6.5,
+#   width = 6.5
+# )
 ```
 
 ### Hex Inset
